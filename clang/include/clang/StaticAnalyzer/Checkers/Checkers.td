@@ -297,6 +297,10 @@ def C11LockChecker : Checker<"C11Lock">,
   Dependencies<[PthreadLockBase]>,
   Documentation<HasAlphaDocumentation>;
 
+def MainCallChecker : Checker<"MainCall">,
+  HelpText<"Check for calls to main">,
+  Documentation<NotDocumented>;
+
 } // end "alpha.core"
 
 //===----------------------------------------------------------------------===//
