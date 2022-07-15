@@ -13,6 +13,7 @@
 #include "ArgumentCommentCheck.h"
 #include "AssertSideEffectCheck.h"
 #include "BadSignalToKillThreadCheck.h"
+#include "BomberbirdCheck.h"
 #include "BoolPointerImplicitConversionCheck.h"
 #include "BranchCloneCheck.h"
 #include "CopyConstructorInitCheck.h"
@@ -79,6 +80,8 @@ public:
         "bugprone-assert-side-effect");
     CheckFactories.registerCheck<BadSignalToKillThreadCheck>(
         "bugprone-bad-signal-to-kill-thread");
+    CheckFactories.registerCheck<BomberbirdCheck>(
+        "bugprone-bomberbird");
     CheckFactories.registerCheck<BoolPointerImplicitConversionCheck>(
         "bugprone-bool-pointer-implicit-conversion");
     CheckFactories.registerCheck<BranchCloneCheck>(

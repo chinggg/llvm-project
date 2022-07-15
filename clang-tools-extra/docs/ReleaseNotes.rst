@@ -290,6 +290,11 @@ New checks
   Finds structs that are inefficiently packed or aligned, and recommends
   packing and/or aligning of said structs as needed.
 
+- New :doc:`bugprone-bomberbird
+  <clang-tidy/checks/bugprone-bomberbird>` check.
+
+  FIXME: add release notes.
+
 - New :doc:`bugprone-misplaced-pointer-arithmetic-in-alloc
   <clang-tidy/checks/bugprone-misplaced-pointer-arithmetic-in-alloc>` check.
 
