@@ -161,6 +161,11 @@ New checks
   Warns when the code is unwrapping a `std::optional<T>`, `absl::optional<T>`,
   or `base::Optional<T>` object without assuring that it contains a value.
 
+- New :doc:`fixrev-abort
+  <clang-tidy/checks/fixrev/abort>` check.
+
+  FIXME: add release notes.
+
 - New :doc:`misc-confusable-identifiers <clang-tidy/checks/misc/confusable-identifiers>` check.
 
   Detects confusable Unicode identifiers.

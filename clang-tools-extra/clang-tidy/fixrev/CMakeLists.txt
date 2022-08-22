@@ -4,6 +4,9 @@ set(LLVM_LINK_COMPONENTS
   )
 
 add_clang_library(clangTidyFixrevModule
+  AbortCheck.cpp
+  FixrevTidyModule.cpp
+
   LINK_LIBS
   clangTidy
   clangTidyCppCoreGuidelinesModule
@@ -13,7 +16,7 @@ add_clang_library(clangTidyFixrevModule
   omp_gen
   )
 
-clang_target_link_libraries(clangTidyBugproneModule
+clang_target_link_libraries(clangTidyFixrevModule
   PRIVATE
   clangAnalysis
   clangAnalysisFlowSensitive

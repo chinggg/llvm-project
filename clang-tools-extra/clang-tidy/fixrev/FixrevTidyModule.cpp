@@ -10,6 +10,7 @@
 #include "../ClangTidyModule.h"
 #include "../ClangTidyModuleRegistry.h"
 #include "../cppcoreguidelines/NarrowingConversionsCheck.h"
+#include "AbortCheck.h"
 
 
 namespace clang {
@@ -19,6 +20,8 @@ namespace fixrev {
 class FixrevModule : public ClangTidyModule {
 public:
   void addCheckFactories(ClangTidyCheckFactories &CheckFactories) override {
+    CheckFactories.registerCheck<AbortCheck>(
+        "fixrev-abort");
   }
 };
 

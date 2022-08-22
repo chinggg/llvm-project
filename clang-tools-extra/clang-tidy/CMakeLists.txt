@@ -87,6 +87,7 @@ set(ALL_CLANG_TIDY_CHECKS
   clangTidyConcurrencyModule
   clangTidyCppCoreGuidelinesModule
   clangTidyDarwinModule
+  clangTidyFixrevModule
   clangTidyFuchsiaModule
   clangTidyGoogleModule
   clangTidyHICPPModule
