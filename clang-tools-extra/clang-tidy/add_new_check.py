@@ -353,8 +353,8 @@ def update_checks_list(clang_tidy_path):
         return ''
       stmt = code[stmt_start_pos+1:stmt_end_pos]
       matches = re.search('registerCheck<([^>:]*)>\(\s*"([^"]*)"\s*\)', stmt)
-      if matches and matches[2] == full_check_name:
-        class_name = matches[1]
+      if matches and matches.group(2) == full_check_name:
+        class_name = matches.group(1)
         if '::' in class_name:
           parts = class_name.split('::')
           class_name = parts[-1]
@@ -380,8 +380,8 @@ def update_checks_list(clang_tidy_path):
         code = f.read()
       matches = re.search(' ' + ctor_pattern, code)
 
-    if matches and matches[1] != 'ClangTidyCheck':
-      return matches[1]
+    if matches and matches.group(1) != 'ClangTidyCheck':
+      return matches.group(1)
     return ''
 
   # Some simple heuristics to figure out if a check has an autofix or not.
@@ -464,8 +464,8 @@ def update_checks_list(clang_tidy_path):
         autofix = ''
       else:
         redirect_parts = re.search('^\.\./([^/]*)/([^/]*)$', match.group(1))
-        title = redirect_parts[1] + '-' + redirect_parts[2]
-        target = redirect_parts[1] + '/' + redirect_parts[2] + '.html'
+        title = redirect_parts.group(1) + '-' + redirect_parts.group(2)
+        target = redirect_parts.group(1) + '/' + redirect_parts.group(2) + '.html'
         autofix = has_auto_fix(title)
 
       # The checker is just a redirect.
