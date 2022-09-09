@@ -9,7 +9,7 @@
 #ifndef LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_FIXREV_ABORTCHECK_H
 #define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_FIXREV_ABORTCHECK_H
 
-#include "../ClangTidyCheck.h"
+#include "../utils/TransformerClangTidyCheck.h"
 
 namespace clang {
 namespace tidy {
@@ -19,12 +19,9 @@ namespace fixrev {
 ///
 /// For the user-facing documentation see:
 /// http://clang.llvm.org/extra/clang-tidy/checks/fixrev/abort.html
-class AbortCheck : public ClangTidyCheck {
+class AbortCheck : public utils::TransformerClangTidyCheck {
 public:
-  AbortCheck(StringRef Name, ClangTidyContext *Context)
-      : ClangTidyCheck(Name, Context) {}
-  void registerMatchers(ast_matchers::MatchFinder *Finder) override;
-  void check(const ast_matchers::MatchFinder::MatchResult &Result) override;
+  AbortCheck(StringRef Name, ClangTidyContext *Context);
 };
 
 } // namespace fixrev
