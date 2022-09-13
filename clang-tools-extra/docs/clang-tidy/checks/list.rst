@@ -201,6 +201,7 @@ Clang-Tidy Checks
    `darwin-avoid-spinlock <darwin/avoid-spinlock.html>`_,
    `darwin-dispatch-once-nonstatic <darwin/dispatch-once-nonstatic.html>`_, "Yes"
    `fixrev-abort <fixrev/abort.html>`_, "Yes"
+   `fixrev-exec <fixrev/exec.html>`_, "Yes"
    `fuchsia-default-arguments-calls <fuchsia/default-arguments-calls.html>`_,
    `fuchsia-default-arguments-declarations <fuchsia/default-arguments-declarations.html>`_, "Yes"
    `fuchsia-multiple-inheritance <fuchsia/multiple-inheritance.html>`_,

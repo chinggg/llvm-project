@@ -166,6 +166,11 @@ New checks
 
   FIXME: add release notes.
 
+- New :doc:`fixrev-exec
+  <clang-tidy/checks/fixrev/exec>` check.
+
+  FIXME: add release notes.
+
 - New :doc:`misc-confusable-identifiers <clang-tidy/checks/misc/confusable-identifiers>` check.
 
   Detects confusable Unicode identifiers.

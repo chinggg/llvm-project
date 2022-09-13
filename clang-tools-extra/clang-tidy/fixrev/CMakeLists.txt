@@ -5,6 +5,7 @@ set(LLVM_LINK_COMPONENTS
 
 add_clang_library(clangTidyFixrevModule
   AbortCheck.cpp
+  ExecCheck.cpp
   FixrevTidyModule.cpp
 
   LINK_LIBS

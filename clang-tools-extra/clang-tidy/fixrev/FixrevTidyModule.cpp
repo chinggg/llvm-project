@@ -11,6 +11,7 @@
 #include "../ClangTidyModuleRegistry.h"
 #include "../cppcoreguidelines/NarrowingConversionsCheck.h"
 #include "AbortCheck.h"
+#include "ExecCheck.h"
 
 
 namespace clang {
@@ -22,6 +23,8 @@ public:
   void addCheckFactories(ClangTidyCheckFactories &CheckFactories) override {
     CheckFactories.registerCheck<AbortCheck>(
         "fixrev-abort");
+    CheckFactories.registerCheck<ExecCheck>(
+        "fixrev-exec");
   }
 };
 
