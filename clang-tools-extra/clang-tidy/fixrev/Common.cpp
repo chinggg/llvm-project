@@ -11,24 +11,30 @@ namespace tidy {
 namespace fixrev {
 
 // statementCountUpTo(unsigned N): modified from statementCountIs()
-AST_MATCHER_P(CompoundStmt, statementCountUpTo, unsigned, N) {
+inline AST_MATCHER_P(CompoundStmt, statementCountUpTo, unsigned, N) {
   return Node.size() <= N;
 }
 
 // ignoringCasts: modified from IgnoreImplicitCasts()
-AST_MATCHER_P(Expr, ignoringCasts, ast_matchers::internal::Matcher<Expr>,
-              InnerMatcher) {
+inline AST_MATCHER_P(Expr, ignoringCasts, ast_matchers::internal::Matcher<Expr>,
+                     InnerMatcher) {
   return InnerMatcher.matches(*Node.IgnoreCasts(), Finder, Builder);
 }
 
-// concatBinaryOp: Matches concatenation of up to N binary operators
-ast_matchers::internal::BindableMatcher<Stmt>
+// concatBinaryOp: Matches [MinN, MaxN] binary operator concatenation of
+// condition matcher
+inline ast_matchers::internal::BindableMatcher<Stmt>
 concatBinaryOp(const ast_matchers::internal::BindableMatcher<Stmt> Cond,
-               unsigned N, const std::string &OpName = "||") {
+               unsigned MaxN, unsigned MinN = 0,
+               const std::string &OpName = "||") {
   auto Conds = Cond;
-  while (N--) {
-    Conds = expr(anyOf(Cond, binaryOperator(hasOperatorName(OpName),
-                                            hasOperands(Cond, Conds))));
+  while (MinN--) {
+    Conds = binaryOperator(hasOperatorName(OpName), hasOperands(Cond, Conds));
+  }
+  MaxN -= MinN;
+  while (MaxN--) {
+    Conds = expr(anyOf(Conds, binaryOperator(hasOperatorName(OpName),
+                                             hasOperands(Cond, Conds))));
   }
   return Conds;
 }
@@ -41,30 +47,36 @@ AST_MATCHER_FUNCTION(ast_matchers::internal::Matcher<Expr>, nullConstant) {
   // cStyleCastExpr(hasDescendant(expr(nullPointerConstant()))));
 }
 
-auto ArithOp = binaryOperator(hasAnyOperatorName("+", "-", "*", "/"));
-auto CmpOp = binaryOperator(hasAnyOperatorName("<", ">", "<=", ">="));
-auto RelOp = binaryOperator(hasAnyOperatorName("==", "!="));
-auto JmpStmt =
+inline auto ArithOp = binaryOperator(
+    hasAnyOperatorName("+", "-", "*", "/", "%", "&", "|", "^", "<<", ">>"));
+inline auto CmpOp = binaryOperator(hasAnyOperatorName("<", ">", "<=", ">="));
+inline auto RelOp = binaryOperator(hasAnyOperatorName("==", "!="));
+inline auto JmpStmt =
     stmt(anyOf(breakStmt(), continueStmt(), gotoStmt(), returnStmt()));
-auto NumLit = anyOf(integerLiteral(), nullConstant());
-auto NumVar = hasType(isInteger());
-auto NumTracer = anyOf(NumLit, NumVar, memberExpr(member(NumVar)));
-auto PtrVar = hasType(isAnyPointer());
-auto PtrTracer = anyOf(declRefExpr(PtrVar), memberExpr(member(PtrVar)));
-auto SingleCaller =
+inline auto NumLit = anyOf(integerLiteral(), nullConstant());
+inline auto NumVar = hasType(isInteger());
+inline auto NumTracer = anyOf(NumLit, NumVar, memberExpr(member(NumVar)));
+inline auto PtrVar = hasType(isAnyPointer());
+inline auto PtrTracer = anyOf(declRefExpr(PtrVar), memberExpr(member(PtrVar)));
+inline auto SingleCaller =
     anyOf(sizeOfExpr((ignoringParenImpCasts(declRefExpr()))),
           callExpr(argumentCountIs(1),
                    hasArgument(0, ignoringParenImpCasts(declRefExpr()))));
-auto NumVal = ignoringParenImpCasts(anyOf(NumLit, NumTracer, SingleCaller));
-auto NumOp =
-    anyOf(NumVal, binaryOperator(ArithOp, hasOperands(NumVal, NumVal)));
-auto NumCmp = binaryOperator(anyOf(CmpOp, RelOp), hasOperands(NumOp, NumOp));
-auto PtrOp = expr(
+inline auto NumVal =
+    ignoringParenImpCasts(anyOf(NumLit, NumTracer, SingleCaller));
+inline auto NumOp =
+    ignoringParenImpCasts(anyOf(NumVal, binaryOperator(ArithOp, hasOperands(NumVal, NumVal))));
+inline auto NumCmp =
+    binaryOperator(anyOf(CmpOp, RelOp), hasEitherOperand(NumOp));
+inline auto PtrOp = expr(
     anyOf(PtrTracer, binaryOperator(ArithOp, hasOperands(NumVal, PtrTracer))));
-auto PtrCmp = binaryOperator(CmpOp, hasOperands(PtrOp, PtrOp));
-auto PtrRel = binaryOperator(RelOp, hasOperands(PtrOp, PtrOp));
-auto EqNull = binaryOperator(
+inline auto PtrCmp = binaryOperator(CmpOp, hasOperands(PtrOp, PtrOp));
+inline auto PtrRel = binaryOperator(RelOp, hasOperands(PtrOp, PtrOp));
+inline auto EqNull = binaryOperator(
     hasOperatorName("=="), hasOperands(ignoringParenImpCasts(PtrTracer),
+                                       ignoringParenImpCasts(nullConstant())));
+inline auto NotEqNull = binaryOperator(
+    hasOperatorName("!="), hasOperands(ignoringParenImpCasts(PtrTracer),
                                        ignoringParenImpCasts(nullConstant())));
 
 } // namespace fixrev
