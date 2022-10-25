@@ -25,7 +25,7 @@ namespace fixrev {
 // Abort Pattern: revert if-statement whose small body has jump statement
 RewriteRuleWith<std::string> abortRule() {
   const StringRef C = "C", T = "T"; // C=Condition, T=Then
-  auto AbortCond = expr(anyOf(EqNull, PtrCmp, NumCmp));
+  auto AbortCond = expr(anyOf(EqNull, PtrCmp, NumCmp, NumOp, PtrOp));
   auto AbortConds = concatBinaryOp(AbortCond, 4).bind(C);
   auto AbortBody = stmt(anyOf(JmpStmt, compoundStmt(statementCountUpTo(3),
                                                     hasDescendant(JmpStmt))))
