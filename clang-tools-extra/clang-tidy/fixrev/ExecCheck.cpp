@@ -7,30 +7,39 @@
 //===----------------------------------------------------------------------===//
 
 #include "ExecCheck.h"
+#include "Common.cpp"
 #include "clang/AST/ASTContext.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
+#include "clang/Tooling/Transformer/Stencil.h"
 
 using namespace clang::ast_matchers;
+using namespace clang::ast_matchers;
+using namespace clang::transformer;
 
 namespace clang {
 namespace tidy {
 namespace fixrev {
 
-void ExecCheck::registerMatchers(MatchFinder *Finder) {
-  // FIXME: Add matchers.
-  Finder->addMatcher(functionDecl().bind("x"), this);
+// Exec Pattern: revert if/for/while statement whose body has no jump statement
+RewriteRuleWith<std::string> execRule() {
+  const StringRef C = "C", T = "T"; // C=Condition, T=Then
+  auto ExecCond = expr(anyOf(NotEqNull, PtrCmp, NumCmp));
+  auto ExecConds = concatBinaryOp(ExecCond, 4, 1, "&&").bind(C);
+  auto ExecBody = stmt(unless(hasDescendant(JmpStmt))).bind(T);
+  auto LoopStmt = stmt(anyOf(whileStmt(), forStmt()));
+  auto ExecEdit = changeTo(cat(statement(C.str()), statement(T.str())));
+  auto ExecMeta = cat("revert exec condition: ", statement(C.str()));
+  const auto IfRule = makeRule(
+      ifStmt(hasCondition(ExecConds), hasThen(ExecBody)), ExecEdit, ExecMeta);
+  const auto ForRule = makeRule(
+      forStmt(hasCondition(ExecConds), hasBody(ExecBody)), ExecEdit, ExecMeta);
+  const auto WhileRule = makeRule(
+      forStmt(hasCondition(ExecConds), hasBody(ExecBody)), ExecEdit, ExecMeta);
+  return applyFirst({IfRule, ForRule, WhileRule});
 }
 
-void ExecCheck::check(const MatchFinder::MatchResult &Result) {
-  // FIXME: Add callback implementation.
-  const auto *MatchedDecl = Result.Nodes.getNodeAs<FunctionDecl>("x");
-  if (!MatchedDecl->getIdentifier() || MatchedDecl->getName().startswith("awesome_"))
-    return;
-  diag(MatchedDecl->getLocation(), "function %0 is insufficiently awesome")
-      << MatchedDecl;
-  diag(MatchedDecl->getLocation(), "insert 'awesome'", DiagnosticIDs::Note)
-      << FixItHint::CreateInsertion(MatchedDecl->getLocation(), "awesome_");
-}
+ExecCheck::ExecCheck(StringRef Name, ClangTidyContext *Context)
+    : TransformerClangTidyCheck(execRule(), Name, Context) {}
 
 } // namespace fixrev
 } // namespace tidy

@@ -9,7 +9,7 @@
 #ifndef LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_FIXREV_EXECCHECK_H
 #define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_FIXREV_EXECCHECK_H
 
-#include "../ClangTidyCheck.h"
+#include "../utils/TransformerClangTidyCheck.h"
 
 namespace clang {
 namespace tidy {
@@ -19,12 +19,12 @@ namespace fixrev {
 ///
 /// For the user-facing documentation see:
 /// http://clang.llvm.org/extra/clang-tidy/checks/fixrev/exec.html
-class ExecCheck : public ClangTidyCheck {
+class ExecCheck : public utils::TransformerClangTidyCheck {
 public:
-  ExecCheck(StringRef Name, ClangTidyContext *Context)
-      : ClangTidyCheck(Name, Context) {}
-  void registerMatchers(ast_matchers::MatchFinder *Finder) override;
-  void check(const ast_matchers::MatchFinder::MatchResult &Result) override;
+  ExecCheck(StringRef Name, ClangTidyContext *Context);
+  llvm::Optional<TraversalKind> getCheckTraversalKind() const override {
+    return TK_IgnoreUnlessSpelledInSource;
+  }
 };
 
 } // namespace fixrev
