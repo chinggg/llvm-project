@@ -146,6 +146,8 @@ def main():
                       help='Use colors in output')
   parser.add_argument('-path', dest='build_path',
                       help='Path used to read a compile command database.')
+  parser.add_argument('-root', dest='root_dir', default='',
+                      help='Root directory used to relativize filenames')
   if yaml:
     parser.add_argument('-export-fixes', metavar='FILE', dest='export_fixes',
                         help='Create a yaml file to store suggested fixes in, '
@@ -255,7 +257,7 @@ def main():
       os.close(handle)
       command.append('-export-fixes=' + tmp_name)
     command.extend(common_clang_tidy_args)
-    command.append(name)
+    command.append(os.path.join(args.root_dir, name))
     command.extend(clang_tidy_args)
 
     task_queue.put(command)
