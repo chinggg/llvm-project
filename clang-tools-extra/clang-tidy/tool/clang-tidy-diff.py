@@ -148,6 +148,8 @@ def main():
                       help='Path used to read a compile command database.')
   parser.add_argument('-root', dest='root_dir', default='',
                       help='Root directory used to relativize filenames')
+  parser.add_argument('-whole-file', dest='whole_file', action='store_true',
+                      help='Check whole file without line-filter')
   if yaml:
     parser.add_argument('-export-fixes', metavar='FILE', dest='export_fixes',
                         help='Create a yaml file to store suggested fixes in, '
@@ -243,13 +245,13 @@ def main():
     common_clang_tidy_args.append('-load=%s' % plugin)
 
   for name in lines_by_file:
-    line_filter_json = json.dumps(
-      [{"name": name, "lines": lines_by_file[name]}],
-      separators=(',', ':'))
-
     # Run clang-tidy on files containing changes.
     command = [args.clang_tidy_binary]
-    command.append('-line-filter=' + line_filter_json)
+    if not args.whole_file:
+      line_filter_json = json.dumps(
+        [{"name": name, "lines": lines_by_file[name]}],
+        separators=(',', ':'))
+      command.append('-line-filter=' + line_filter_json)
     if yaml and args.export_fixes:
       # Get a temporary file. We immediately close the handle so clang-tidy can
       # overwrite it.
