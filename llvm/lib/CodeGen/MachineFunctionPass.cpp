@@ -121,6 +121,128 @@ bool isNameTrivial(const StringRef &Name) {
 
 using namespace myutils;
 
+static cl::opt<bool>
+    EnableMFPassDump("mfpass-dump",
+                        cl::desc("Enable dumping instructions before/after each Machine Function Pass."),
+                        cl::init(false), cl::Hidden);
+
+// This will collect conditional jump information and store it for later comparison
+static SmallVector<const MachineInstr*, 16> BeforeCjumpInsts;
+static SmallVector<std::string, 16> BeforeCjumpSrcs;
+static SmallVector<unsigned, 16> BeforeCjumpLines;
+static std::string BeforeFunction;
+static std::string BeforeFileName;
+static std::string BeforeContext;
+
+bool dumpCjumppInsts(const MachineFunction &MF, StringRef Context, bool IsBefore) {
+  if (Context.ends_with("CountInstr")) return false;
+
+  auto *SP = MF.getFunction().getSubprogram();
+  if (!SP) return false;  // no debug info available if not compiled with -g
+  auto FileName = SP->getFilename();
+
+  if (IsBefore) {
+    // Clear previous state and collect current state
+    BeforeFunction = MF.getName().str();
+    BeforeFileName = FileName.str();
+    BeforeContext = Context.str();
+    BeforeCjumpInsts.clear();
+    BeforeCjumpSrcs.clear();
+    BeforeCjumpLines.clear();
+
+    // Collect all conditional jumps
+    for (const MachineBasicBlock &MBB : MF) {
+      for (const MachineInstr &MI : MBB) {
+        if (MI.getDesc().isBranch() && MI.getDesc().isConditionalBranch()) {
+          BeforeCjumpInsts.push_back(&MI);
+          BeforeCjumpLines.push_back(getLineNumber(MI.getDebugLoc()));
+          BeforeCjumpSrcs.push_back(getLineSrc(MI.getDebugLoc()));
+        }
+      }
+    }
+    return true;
+  }
+
+  // After pass execution - collect current state
+  SmallVector<const MachineInstr*, 16> AfterCjumpInsts;
+  SmallVector<std::string, 16> AfterCjumpSrcs;
+  SmallVector<unsigned, 16> AfterCjumpLines;
+
+  for (const MachineBasicBlock &MBB : MF) {
+    for (const MachineInstr &MI : MBB) {
+      if (MI.getDesc().isBranch() && MI.getDesc().isConditionalBranch()) {
+        AfterCjumpInsts.push_back(&MI);
+        AfterCjumpLines.push_back(getLineNumber(MI.getDebugLoc()));
+        AfterCjumpSrcs.push_back(getLineSrc(MI.getDebugLoc()));
+      }
+    }
+  }
+
+  // Find added and removed jumps based on line numbers
+  // (using line numbers as a proxy for identifying the same jump)
+  SmallVector<unsigned, 16> AddedLines;
+  SmallVector<const MachineInstr*, 16> AddedInsts;
+  SmallVector<std::string, 16> AddedSrcs;
+
+  SmallVector<unsigned, 16> RemovedLines;
+  SmallVector<const MachineInstr*, 16> RemovedInsts;
+  SmallVector<std::string, 16> RemovedSrcs;
+
+  // Find added jumps
+  for (size_t i = 0; i < AfterCjumpLines.size(); ++i) {
+    if (std::find(BeforeCjumpLines.begin(), BeforeCjumpLines.end(), 
+                 AfterCjumpLines[i]) == BeforeCjumpLines.end()) {
+      AddedLines.push_back(AfterCjumpLines[i]);
+      AddedInsts.push_back(AfterCjumpInsts[i]);
+      AddedSrcs.push_back(AfterCjumpSrcs[i]);
+    }
+  }
+
+  // Find removed jumps
+  for (size_t i = 0; i < BeforeCjumpLines.size(); ++i) {
+    if (std::find(AfterCjumpLines.begin(), AfterCjumpLines.end(), 
+                 BeforeCjumpLines[i]) == BeforeCjumpLines.end()) {
+      RemovedLines.push_back(BeforeCjumpLines[i]);
+      RemovedInsts.push_back(BeforeCjumpInsts[i]);
+      RemovedSrcs.push_back(BeforeCjumpSrcs[i]);
+    }
+  }
+
+  // Only print if there were changes
+  if (!AddedLines.empty() || !RemovedLines.empty()) {
+    // Build the complete JSON string in memory before outputting
+    std::string JsonOutput;
+    raw_string_ostream JsonStream(JsonOutput);
+    
+    JsonStream << "{"
+              << "\"function\": \"" << BeforeFunction << "\", "
+              << "\"file\": \"" << BeforeFileName << "\", "
+              << "\"context\": \"" << BeforeContext << "\", "
+              << "\"cjump_count_before\": " << BeforeCjumpInsts.size() << ", "
+              << "\"cjump_count_after\": " << AfterCjumpInsts.size() << ", "
+              << "\"removed_cjump_count\": " << RemovedLines.size() << ", "
+              << "\"removed_cjump_lines\": [" << join(RemovedLines) << "], "
+              << "\"removed_cjump_insts\": [" << join(RemovedInsts) << "], "
+              << "\"removed_cjump_srcs\": [" << join(RemovedSrcs) << "], "
+              << "\"added_cjump_count\": " << AddedLines.size() << ", "
+              << "\"added_cjump_lines\": [" << join(AddedLines) << "], "
+              << "\"added_cjump_insts\": [" << join(AddedInsts) << "], "
+              << "\"added_cjump_srcs\": [" << join(AddedSrcs) << "]"
+              << "}\n";
+    
+    // Flush the stream to ensure all content is in the string
+    JsonStream.flush();
+    
+    // Output the complete JSON string - no lock needed as each write to errs() is atomic
+    errs() << JsonOutput;
+    
+    return true;
+  }
+  
+  // No changes to cjumps
+  return false;
+}
+
 Pass *MachineFunctionPass::createPrinterPass(raw_ostream &O,
                                              const std::string &Banner) const {
   return createMachineFunctionPrinterPass(O, Banner);
@@ -178,7 +300,13 @@ bool MachineFunctionPass::runOnFunction(Function &F) {
     MF.print(OS);
   }
 
+  if (EnableMFPassDump) {
+    dumpCjumppInsts(MF, getPassName(), true);
+  }
   bool RV = runOnMachineFunction(MF);
+  if (EnableMFPassDump) {
+    dumpCjumppInsts(MF, getPassName(), false);
+  }
 
   if (ShouldEmitSizeRemarks) {
     // We wanted size remarks. Check if there was a change to the number of
