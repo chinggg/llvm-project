@@ -24,9 +24,14 @@
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachineOptimizationRemarkEmitter.h"
 #include "llvm/CodeGen/Passes.h"
+#include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/PrintPasses.h"
+#include "llvm/Support/raw_ostream.h"
+#include <fstream>
+#include <sstream>
+#include <iomanip>
 
 using namespace llvm;
 using namespace ore;
@@ -34,6 +39,91 @@ using namespace ore;
 Pass *MachineFunctionPass::createPrinterPass(raw_ostream &O,
                                              const std::string &Banner) const {
   return createMachineFunctionPrinterPass(O, Banner);
+}
+
+// get source line from debugloc as string by reading file and specific line
+std::string getLineSrc(const DebugLoc &DL) {
+  if (!DL) {
+    return "[getDebugLoc returns null]";
+  }
+  StringRef FileName = DL->getFilename();
+  unsigned Line = DL.getLine();
+  std::string SourceLine;
+  std::error_code EC;
+  std::ifstream File(FileName.str());
+  for (unsigned i = 0; i < Line; ++i) {
+    std::getline(File, SourceLine);
+  }
+  return SourceLine;
+}
+
+unsigned getLineNumber(const DebugLoc &DL) {
+  if (DL) {
+    return DL.getLine();
+  }
+  return 0;
+}
+
+template <typename T>
+std::string join(const SmallVectorImpl<T> &vec, const std::string &sep = ", ") {
+  std::ostringstream sss;
+  for (size_t i = 0; i < vec.size(); ++i) {
+    std::string str;
+    raw_string_ostream ss(str);
+    if constexpr (std::is_pointer<T>::value) {
+      ss << *vec[i];
+    } else {
+      ss << vec[i];
+    }
+    str.erase(std::remove(str.begin(), str.end(), '\n'), str.end());
+    if constexpr (std::is_integral<T>::value) {
+      sss << str;
+    } else {  // wrap each element with ""
+      sss << std::quoted(str);
+    }
+    if (i != vec.size() - 1) {
+      sss << sep;
+    }
+  }
+  return sss.str();
+}
+
+bool dumpCjumppInsts(const MachineFunction &MF, StringRef Context, bool IsBefore) {
+  SmallVector<const MachineInstr*, 16> CjumpInsts;
+  SmallVector<std::string, 16> CjumpSrcs;
+  SmallVector<unsigned, 16> CjumpLines;
+
+  if (Context == "X86CountInstr") return false;
+
+  auto FileName = MF.getFunction().getSubprogram()->getFilename();
+
+  for (const MachineBasicBlock &MBB : MF) {
+    // Iterate through all instructions in the block
+    for (const MachineInstr &MI : MBB) {
+      // Check if the instruction is a conditional jump (e.g., X86 jcc)
+      if (MI.getDesc().isBranch() && MI.getDesc().isConditionalBranch()) {
+        CjumpInsts.push_back(&MI);
+        CjumpLines.push_back(getLineNumber(MI.getDebugLoc()));
+        CjumpSrcs.push_back(getLineSrc(MI.getDebugLoc()));
+      }
+    }
+  }
+  if (IsBefore)
+    errs() << "{"
+          << "\"function\": \"" << MF.getName() << "\", "
+          << "\"file\": \"" << FileName << "\", "
+          << "\"context\": \"" << Context << "\", "
+          << "\"cjump_count_before\": " << CjumpInsts.size() << ", "
+          << "\"cjump_lines_before\": [" <<join(CjumpLines) << "], "
+          << "\"cjump_insts_before\": [" << join(CjumpInsts) << "], "
+          << "\"cjump_srcs_before\": [" << join(CjumpSrcs) << "], ";
+  else
+    errs() << "\"cjump_count_after\": " << CjumpInsts.size() << ", "
+          << "\"cjump_lines_after\": [" <<join(CjumpLines) << "], "
+          << "\"cjump_insts_after\": [" << join(CjumpInsts) << "], "
+          << "\"cjump_srcs_after\": [" << join(CjumpSrcs) << "]"
+          << "}\n";
+  return true;
 }
 
 bool MachineFunctionPass::runOnFunction(Function &F) {
@@ -90,7 +180,9 @@ bool MachineFunctionPass::runOnFunction(Function &F) {
 
   MFProps.reset(ClearedProperties);
 
+  dumpCjumppInsts(MF, getPassName(), true);
   bool RV = runOnMachineFunction(MF);
+  dumpCjumppInsts(MF, getPassName(), false);
 
   if (ShouldEmitSizeRemarks) {
     // We wanted size remarks. Check if there was a change to the number of
