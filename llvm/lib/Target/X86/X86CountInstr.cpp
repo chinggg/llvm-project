@@ -80,6 +80,11 @@ std::string getLineSrc(const DebugLoc &DL) {
   for (unsigned i = 0; i < Line; ++i) {
     std::getline(File, SourceLine);
   }
+  // escape \t in SourceLine with 4 spaces
+  std::replace(SourceLine.begin(), SourceLine.end(), '\t', ' ');
+  // trim \n and \r from SourceLine
+  SourceLine.erase(std::remove(SourceLine.begin(), SourceLine.end(), '\n'), SourceLine.end());
+  SourceLine.erase(std::remove(SourceLine.begin(), SourceLine.end(), '\r'), SourceLine.end());
   return SourceLine;
 }
 
@@ -90,6 +95,16 @@ unsigned getLineNumber(const DebugLoc &DL) {
   return 0;
 }
 
+bool isNameTrivial(const StringRef &Name) {
+  const std::string TrivialKeywords[] = {".h", "include/", "third_party", "third-party", "fuzz", "test", "helper"};
+  for (const auto &Keyword : TrivialKeywords) {
+    if (Name.lower().find(Keyword) != std::string::npos) {
+      return true;
+    }
+  }
+  return false;
+}
+
 char X86CountInstructions::ID = 0;
 
 // Run on each MachineFunction
@@ -98,15 +113,14 @@ bool X86CountInstructions::runOnMachineFunction(MachineFunction &MF) {
     return false;
   if (!EnableCountInstructions)
     return false;
+  if (isNameTrivial(MF.getName()))
+    return false;
 
   // Get the source file name
-  StringRef FileName;
-  if (!MF.getFunction().getSubprogram())
-    FileName = "unknown";
-  else
-    FileName = MF.getFunction().getSubprogram()->getScope()->getFilename();
-  // skip if file contains "include/" or ends with ".h"
-  if (FileName.contains("include/") || FileName.ends_with(".h"))
+  auto *SP = MF.getFunction().getSubprogram();
+  if (!SP) return false;  // no debug info available if not compiled with -g
+  auto FileName = SP->getFilename();
+  if (isNameTrivial(FileName))
     return false;
 
   // Instruction counters and line numbers
@@ -124,6 +138,7 @@ bool X86CountInstructions::runOnMachineFunction(MachineFunction &MF) {
   const Function &F = MF.getFunction();
   for (const BasicBlock &BB : F) {
     for (const Instruction &I : BB) {
+      if (!I.getDebugLoc()) continue;
       if (isa<SelectInst>(&I)) {
         SelectInsts.push_back(&I);
         SelectLines.push_back(getLineNumber(I.getDebugLoc()));
@@ -136,6 +151,7 @@ bool X86CountInstructions::runOnMachineFunction(MachineFunction &MF) {
   for (const MachineBasicBlock &MBB : MF) {
     // Iterate through all instructions in the block
     for (const MachineInstr &MI : MBB) {
+      if (!MI.getDebugLoc()) continue;
       // Check if the instruction is a conditional move (e.g., X86 cmov)
       if (isCmovInstruction(MI)) {
         CmovInsts.push_back(&MI);
