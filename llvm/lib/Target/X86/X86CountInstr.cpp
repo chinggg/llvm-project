@@ -23,9 +23,9 @@ using namespace llvm;
 #define DEBUG_TYPE "x86-count-instr"
 
 static cl::opt<bool>
-    EnableCountInstructions(DEBUG_TYPE,
-                        cl::desc("Enable the X86 count instr."),
-                        cl::init(false), cl::Hidden);
+  EnableCountInstructions("enable-x86-count-instr",
+            cl::desc("Enable the X86 count instr."),
+            cl::init(false), cl::Hidden);
 
 namespace {
 class X86CountInstructions : public MachineFunctionPass {
