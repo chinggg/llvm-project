@@ -77,4 +77,21 @@ private:
 
 } // End llvm namespace
 
+using namespace llvm;
+
+namespace myutils {
+// Definition of utils used by custom multi-arch MachineFunctionPasses
+
+template <typename T>
+std::string join(const SmallVectorImpl<T> &vec, const std::string &sep = ", ");
+
+// get source line from debugloc as string by reading file and specific line
+std::string getLineSrc(const DebugLoc &DL);
+
+unsigned getLineNumber(const DebugLoc &DL);
+
+bool isNameTrivial(const StringRef &Name);
+
+} // namespace myutils
+
 #endif
