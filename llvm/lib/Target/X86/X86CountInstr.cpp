@@ -15,8 +15,6 @@
 #include <llvm/Support/JSON.h>
 #include <llvm/Support/FileSystem.h>
 #include <string>
-#include <fstream>
-#include <iomanip>
 
 using namespace llvm;
 
@@ -43,67 +41,7 @@ public:
 };
 } // end anonymous namespace
 
-template <typename T>
-std::string join(const SmallVectorImpl<T> &vec, const std::string &sep = ", ") {
-  std::ostringstream sss;
-  for (size_t i = 0; i < vec.size(); ++i) {
-    std::string str;
-    raw_string_ostream ss(str);
-    if constexpr (std::is_pointer<T>::value) {
-      ss << *vec[i];
-    } else {
-      ss << vec[i];
-    }
-    str.erase(std::remove(str.begin(), str.end(), '\n'), str.end());
-    if constexpr (std::is_integral<T>::value) {
-      sss << str;
-    } else {  // wrap each element with ""
-      sss << std::quoted(str);
-    }
-    if (i != vec.size() - 1) {
-      sss << sep;
-    }
-  }
-  return sss.str();
-}
-
-// get source line from debugloc as string by reading file and specific line
-std::string getLineSrc(const DebugLoc &DL) {
-  if (!DL) {
-    return "[getDebugLoc returns null]";
-  }
-  StringRef FileName = DL->getScope()->getFilename();
-  unsigned Line = DL.getLine();
-  std::string SourceLine;
-  std::error_code EC;
-  std::ifstream File(FileName.str());
-  for (unsigned i = 0; i < Line; ++i) {
-    std::getline(File, SourceLine);
-  }
-  // escape \t in SourceLine with 4 spaces
-  std::replace(SourceLine.begin(), SourceLine.end(), '\t', ' ');
-  // trim \n and \r from SourceLine
-  SourceLine.erase(std::remove(SourceLine.begin(), SourceLine.end(), '\n'), SourceLine.end());
-  SourceLine.erase(std::remove(SourceLine.begin(), SourceLine.end(), '\r'), SourceLine.end());
-  return SourceLine;
-}
-
-unsigned getLineNumber(const DebugLoc &DL) {
-  if (DL) {
-    return DL.getLine();
-  }
-  return 0;
-}
-
-bool isNameTrivial(const StringRef &Name) {
-  const std::string TrivialKeywords[] = {".h", "include/", "third_party", "third-party", "fuzz", "test", "helper"};
-  for (const auto &Keyword : TrivialKeywords) {
-    if (Name.lower().find(Keyword) != std::string::npos) {
-      return true;
-    }
-  }
-  return false;
-}
+using namespace myutils;
 
 char X86CountInstructions::ID = 0;
 

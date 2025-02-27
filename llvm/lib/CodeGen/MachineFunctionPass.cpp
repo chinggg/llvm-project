@@ -29,6 +29,9 @@
 #include "llvm/IR/Function.h"
 #include "llvm/IR/PrintPasses.h"
 #include "llvm/Support/raw_ostream.h"
+
+// needed by myutils functions
+#include <string>
 #include <fstream>
 #include <sstream>
 #include <iomanip>
@@ -36,41 +39,11 @@
 using namespace llvm;
 using namespace ore;
 
-Pass *MachineFunctionPass::createPrinterPass(raw_ostream &O,
-                                             const std::string &Banner) const {
-  return createMachineFunctionPrinterPass(O, Banner);
-}
-
-static cl::opt<bool>
-    EnableMFPassDump("mfpass-dump",
-                        cl::desc("Enable dumping instructions before/after each Machine Function Pass."),
-                        cl::init(false), cl::Hidden);
-
-// get source line from debugloc as string by reading file and specific line
-std::string getLineSrc(const DebugLoc &DL) {
-  if (!DL) {
-    return "[getDebugLoc returns null]";
-  }
-  StringRef FileName = DL->getFilename();
-  unsigned Line = DL.getLine();
-  std::string SourceLine;
-  std::error_code EC;
-  std::ifstream File(FileName.str());
-  for (unsigned i = 0; i < Line; ++i) {
-    std::getline(File, SourceLine);
-  }
-  return SourceLine;
-}
-
-unsigned getLineNumber(const DebugLoc &DL) {
-  if (DL) {
-    return DL.getLine();
-  }
-  return 0;
-}
+namespace myutils {
+// Implementation of utils used by custom mutli-arch MachineFunctionPasses
 
 template <typename T>
-std::string join(const SmallVectorImpl<T> &vec, const std::string &sep = ", ") {
+std::string join(const SmallVectorImpl<T> &vec, const std::string &sep) {
   std::ostringstream sss;
   for (size_t i = 0; i < vec.size(); ++i) {
     std::string str;
@@ -92,6 +65,71 @@ std::string join(const SmallVectorImpl<T> &vec, const std::string &sep = ", ") {
   }
   return sss.str();
 }
+
+// Explicit template instantiation to avoid undefined reference linker errors
+// see https://isocpp.org/wiki/faq/templates#separate-template-fn-defn-from-decl
+template
+std::string join(const SmallVectorImpl<std::string> &vec, const std::string &sep);
+
+template
+std::string join(const SmallVectorImpl<const Instruction*> &vec, const std::string &sep);
+
+template
+std::string join(const SmallVectorImpl<const MachineInstr*> &vec, const std::string &sep);
+
+template
+std::string join(const SmallVectorImpl<unsigned> &vec, const std::string &sep);
+
+std::string getLineSrc(const DebugLoc &DL) {
+  if (!DL) {
+    return "[getDebugLoc returns null]";
+  }
+  StringRef FileName = DL->getScope()->getFilename();
+  unsigned Line = DL.getLine();
+  std::string SourceLine;
+  std::error_code EC;
+  std::ifstream File(FileName.str());
+  for (unsigned i = 0; i < Line; ++i) {
+    std::getline(File, SourceLine);
+  }
+  // escape \t in SourceLine with 4 spaces
+  std::replace(SourceLine.begin(), SourceLine.end(), '\t', ' ');
+  // trim \n and \r from SourceLine
+  SourceLine.erase(std::remove(SourceLine.begin(), SourceLine.end(), '\n'), SourceLine.end());
+  SourceLine.erase(std::remove(SourceLine.begin(), SourceLine.end(), '\r'), SourceLine.end());
+  return SourceLine;
+}
+
+unsigned getLineNumber(const DebugLoc &DL) {
+  if (DL) {
+    return DL.getLine();
+  }
+  return 0;
+}
+
+bool isNameTrivial(const StringRef &Name) {
+  const std::string TrivialKeywords[] = {".h", "include/", "third_party", "third-party", "fuzz", "test", "helper"};
+  for (const auto &Keyword : TrivialKeywords) {
+    if (Name.lower().find(Keyword) != std::string::npos) {
+      return true;
+    }
+  }
+  return false;
+}
+
+} // namespace myutils
+
+Pass *MachineFunctionPass::createPrinterPass(raw_ostream &O,
+                                             const std::string &Banner) const {
+  return createMachineFunctionPrinterPass(O, Banner);
+}
+
+using namespace myutils;
+
+static cl::opt<bool>
+    EnableMFPassDump("mfpass-dump",
+                        cl::desc("Enable dumping instructions before/after each Machine Function Pass."),
+                        cl::init(false), cl::Hidden);
 
 bool dumpCjumppInsts(const MachineFunction &MF, StringRef Context, bool IsBefore) {
   SmallVector<const MachineInstr*, 16> CjumpInsts;
