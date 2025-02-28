@@ -127,6 +127,7 @@ extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeRISCVTarget() {
   initializeRISCVInitUndefPass(*PR);
   initializeRISCVMoveMergePass(*PR);
   initializeRISCVPushPopOptPass(*PR);
+  initializeRISCVCountInstructionsPass(*PR);
 }
 
 static StringRef computeDataLayout(const Triple &TT,
@@ -338,7 +339,7 @@ static RVVRegisterRegAlloc
                          createGreedyRVVRegisterAllocator);
 
 static RVVRegisterRegAlloc fastRegAllocRVVReg("fast", "fast register allocator",
-                                              createFastRVVRegisterAllocator);
+                                              createFastRegisterAllocator);
 
 class RISCVPassConfig : public TargetPassConfig {
 public:
@@ -543,6 +544,9 @@ void RISCVPassConfig::addPreEmitPass2() {
   // possibility for other passes to break the requirements for forward
   // progress in the LR/SC block.
   addPass(createRISCVExpandAtomicPseudoPass());
+
+  // Count instructions after all optimizations but before bundling is undone
+  addPass(createRISCVCountInstructionsPass());
 
   // KCFI indirect call checks are lowered to a bundle.
   addPass(createUnpackMachineBundles([&](const MachineFunction &MF) {
