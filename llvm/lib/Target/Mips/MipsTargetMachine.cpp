@@ -68,6 +68,7 @@ extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeMipsTarget() {
   initializeMipsPostLegalizerCombinerPass(*PR);
   initializeMipsMulMulBugFixPass(*PR);
   initializeMipsDAGToDAGISelPass(*PR);
+  initializeMipsCountInstructionsPass(*PR);
 }
 
 static std::string computeDataLayout(const Triple &TT, StringRef CPU,
@@ -330,6 +331,7 @@ void MipsPassConfig::addPreEmitPass() {
   addPass(createMipsBranchExpansion());
 
   addPass(createMipsConstantIslandPass());
+  addPass(createMipsCountInstructionsPass());
 }
 
 bool MipsPassConfig::addIRTranslator() {
