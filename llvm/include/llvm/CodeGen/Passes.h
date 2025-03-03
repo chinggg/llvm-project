@@ -101,6 +101,9 @@ namespace llvm {
   /// handling of complex number arithmetic
   FunctionPass *createComplexDeinterleavingPass(const TargetMachine *TM);
 
+  /// This pass dumps cjump instructions for MachineFunction of any target.
+  MachineFunctionPass *createMFCountInstructionsPass();
+
   /// AtomicExpandID -- Lowers atomic operations in terms of either cmpxchg
   /// load-linked/store-conditional loops.
   extern char &AtomicExpandID;
