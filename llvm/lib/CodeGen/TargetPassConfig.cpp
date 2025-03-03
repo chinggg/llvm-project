@@ -1288,6 +1288,8 @@ void TargetPassConfig::addMachinePasses() {
   // Add passes that directly emit MI after all other MI passes.
   addPreEmitPass2();
 
+  PM->add(createMFCountInstructionsPass());
+
   AddingMachinePasses = false;
 }
 
