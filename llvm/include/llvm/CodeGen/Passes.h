@@ -82,6 +82,9 @@ namespace llvm {
   /// matching during instruction selection.
   FunctionPass *createCodeGenPreparePass();
 
+  /// This pass dumps cjump instructions for MachineFunction of any target.
+  MachineFunctionPass *createMFCountInstructionsPass();
+
   /// AtomicExpandID -- Lowers atomic operations in terms of either cmpxchg
   /// load-linked/store-conditional loops.
   extern char &AtomicExpandID;
