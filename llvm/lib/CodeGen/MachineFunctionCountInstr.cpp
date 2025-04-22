@@ -91,20 +91,28 @@ bool MFCountInstructions::runOnMachineFunction(MachineFunction &MF) {
     }
   }
 
-  // Print JSON like output
-  errs() << "{"
-        << "\"function\": \"" << MF.getName() << "\", "
-        << "\"file\": \"" << FileName << "\", "
-        << "\"context\": \"" << getPassName() << "\", "
-        << "\"select_count\": " << SelectInsts.size() << ", "
-        << "\"select_lines\": [" << join(SelectLines) << "], "
-        << "\"select_insts\": [" << join(SelectInsts) << "], "
-        << "\"select_srcs\": [" << join(SelectSrcs) << "], "
-        << "\"cjump_count\": " << CjumpInsts.size() << ", "
-        << "\"cjump_lines\": [" <<join(CjumpLines) << "], "
-        << "\"cjump_insts\": [" << join(CjumpInsts) << "], "
-        << "\"cjump_srcs\": [" << join(CjumpSrcs) << "]"
-        << "}\n";
+  // Build the complete JSON string in memory before outputting
+  std::string JsonOutput;
+  raw_string_ostream JsonStream(JsonOutput);
+  JsonStream << "{"
+           << "\"function\": \"" << MF.getName() << "\", "
+           << "\"file\": \"" << FileName << "\", "
+           << "\"context\": \"" << getPassName() << "\", "
+           << "\"select_count\": " << SelectInsts.size() << ", "
+           << "\"select_lines\": [" << join(SelectLines) << "], "
+           << "\"select_insts\": [" << join(SelectInsts) << "], "
+           << "\"select_srcs\": [" << join(SelectSrcs) << "], "
+           << "\"cjump_count\": " << CjumpInsts.size() << ", "
+           << "\"cjump_lines\": [" << join(CjumpLines) << "], "
+           << "\"cjump_insts\": [" << join(CjumpInsts) << "], "
+           << "\"cjump_srcs\": [" << join(CjumpSrcs) << "]"
+           << "}\n";
+  
+  // Flush the stream to ensure all content is in the string
+  JsonStream.flush();
+  
+  // Output the complete JSON string - no lock needed as each write to errs() is atomic
+  errs() << JsonOutput;
 
   // get DUMP_DIR from env, otherwise use $PWD/dump/
   const char *dump_dir = getenv("DUMP_DIR");
