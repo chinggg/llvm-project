@@ -19,6 +19,12 @@ static cl::opt<bool>
             cl::desc("Enable MachineFunction count instr."),
             cl::init(false), cl::Hidden);
 
+static cl::opt<std::string>
+  DumpDirectory("mf-count-instr-dump-dir",
+            cl::desc("Directory to dump IR and MIR files only if specified."),
+            cl::value_desc("directory"),
+            cl::init(""), cl::Hidden);
+
 namespace {
 /// MachineFunctionCountInstr - This is a architecture-independent
 /// pass to dump cjump instructions of a MachineFunction.
@@ -114,26 +120,24 @@ bool MFCountInstructions::runOnMachineFunction(MachineFunction &MF) {
   // Output the complete JSON string - no lock needed as each write to errs() is atomic
   errs() << JsonOutput;
 
-  // get DUMP_DIR from env, otherwise use $PWD/dump/
-  const char *dump_dir = getenv("DUMP_DIR");
-  if (!dump_dir) {
-    dump_dir = "./dumps/";
-  }
-  // create dump_dir if it does not exist
-  sys::fs::create_directories(dump_dir);
+  // Only dump function and machine function if a dump directory is specified
+  if (!DumpDirectory.empty()) {
+    // Create dump directory if it doesn't exist
+    sys::fs::create_directories(DumpDirectory);
 
-  // dump F and MF to dump_dir/filename.txt
-  // create unique file name = FunctionName-FileName.dump, FileName should not contain '/'
-  std::string DumpFileStr = std::string(dump_dir) + MF.getName().str() + "-" + FileName.rsplit('/').second.str() + ".dump";
-  std::error_code EC;
-  raw_fd_ostream DumpFile(DumpFileStr, EC);
-  if (!EC) {
-    DumpFile << "=== Dump Function: " << F.getName() << "\n";
-    F.print(DumpFile);
-    DumpFile << "=== Dump MachineFunction: " << MF.getName() << "\n";
-    MF.print(DumpFile);
-  } else {
-    errs() << "Error opening file: " << DumpFileStr << " " << EC.message() << "\n";
+    // Create unique file name = FunctionName-FileName.dump, FileName should not contain '/'
+    std::string DumpFileStr = DumpDirectory + "/" + MF.getName().str() + "-" + 
+                             FileName.rsplit('/').second.str() + ".dump";
+    std::error_code EC;
+    raw_fd_ostream DumpFile(DumpFileStr, EC);
+    if (!EC) {
+      DumpFile << "=== Dump Function: " << F.getName() << "\n";
+      F.print(DumpFile);
+      DumpFile << "=== Dump MachineFunction: " << MF.getName() << "\n";
+      MF.print(DumpFile);
+    } else {
+      errs() << "Error opening file: " << DumpFileStr << " " << EC.message() << "\n";
+    }
   }
 
   return false;
