@@ -122,8 +122,8 @@ using namespace myutils;
 
 static cl::opt<bool>
     EnableMFPassDump("mfpass-dump",
-                        cl::desc("Enable dumping instructions before/after each Machine Function Pass."),
-                        cl::init(false), cl::Hidden);
+                      cl::desc("Dump MachineFunctionPbss changed cjump instructions, can use -filter-print-funcs to filter functions."),
+                      cl::init(false), cl::Hidden);
 
 // This will collect conditional jump information and store it for later comparison
 static SmallVector<const MachineInstr*, 16> BeforeCjumpInsts;
@@ -135,6 +135,10 @@ static std::string BeforeContext;
 
 bool dumpCjumppInsts(const MachineFunction &MF, StringRef Context, bool IsBefore) {
   if (Context.ends_with("CountInstr")) return false;
+
+  // Skip if function is not in print list
+  if (!isFunctionInPrintList(MF.getName()))
+    return false;
 
   auto *SP = MF.getFunction().getSubprogram();
   if (!SP) return false;  // no debug info available if not compiled with -g
