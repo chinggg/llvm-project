@@ -6,6 +6,7 @@
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/DebugInfoMetadata.h"
+#include "llvm/IR/PrintPasses.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/CommandLine.h"
 #include <llvm/Support/FileSystem.h>
@@ -49,6 +50,8 @@ char MFCountInstructions::ID = 0;
 // Run on each MachineFunction
 bool MFCountInstructions::runOnMachineFunction(MachineFunction &MF) {
   if (skipFunction(MF.getFunction()))
+    return false;
+  if (!isFunctionInPrintList(MF.getName()))
     return false;
   if (!EnableCountInstructions)
     return false;
