@@ -107,6 +107,13 @@ unsigned getLineNumber(const DebugLoc &DL) {
   return 0;
 }
 
+unsigned getLineCol(const DebugLoc &DL) {
+  if (DL) {
+    return DL.getCol();
+  }
+  return 0;
+}
+
 bool isNameTrivial(const StringRef &Name) {
   const std::string TrivialKeywords[] = {".h", "include/", "third_party", "third-party", "fuzz", "test", "helper"};
   for (const auto &Keyword : TrivialKeywords) {
