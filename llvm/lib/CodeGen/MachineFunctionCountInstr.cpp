@@ -72,6 +72,8 @@ bool MFCountInstructions::runOnMachineFunction(MachineFunction &MF) {
   SmallVector<std::string, 16> CjumpSrcs;
   SmallVector<unsigned, 16> SelectLines;
   SmallVector<unsigned, 16> CjumpLines;
+  SmallVector<unsigned, 16> CjumpCols;
+  SmallVector<std::string, 16> CjumpChars;
 
   // Iterate through the LLVM IR instructions to count SelectInst
   const Function &F = MF.getFunction();
@@ -94,8 +96,16 @@ bool MFCountInstructions::runOnMachineFunction(MachineFunction &MF) {
       // Check if the instruction is a conditional jump (e.g., X86 jcc)
       if (MI.getDesc().isBranch() && MI.getDesc().isConditionalBranch()) {
         CjumpInsts.push_back(&MI);
-        CjumpLines.push_back(getLineNumber(MI.getDebugLoc()));
-        CjumpSrcs.push_back(getLineSrc(MI.getDebugLoc()));
+        const auto DL = MI.getDebugLoc();
+        CjumpLines.push_back(getLineNumber(DL));
+        std::string LineSrc = getLineSrc(DL);
+        CjumpSrcs.push_back(LineSrc);
+        unsigned Col = getLineCol(DL);
+        CjumpCols.push_back(Col);
+        if (Col > 0 && Col <= LineSrc.size())
+          CjumpChars.push_back(std::string{LineSrc[Col - 1]});  // Column is 1-based, convert char to string
+        else
+          CjumpChars.push_back(std::string(""));  // Invalid column, use empty character
       }
     }
   }
@@ -113,8 +123,10 @@ bool MFCountInstructions::runOnMachineFunction(MachineFunction &MF) {
            << "\"select_srcs\": [" << join(SelectSrcs) << "], "
            << "\"cjump_count\": " << CjumpInsts.size() << ", "
            << "\"cjump_lines\": [" << join(CjumpLines) << "], "
+           << "\"cjump_cols\": [" << join(CjumpCols) << "], "
            << "\"cjump_insts\": [" << join(CjumpInsts) << "], "
-           << "\"cjump_srcs\": [" << join(CjumpSrcs) << "]"
+           << "\"cjump_srcs\": [" << join(CjumpSrcs) << "], "
+           << "\"cjump_chars\": [" << join(CjumpChars) << "]"
            << "}\n";
   
   // Flush the stream to ensure all content is in the string

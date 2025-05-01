@@ -90,6 +90,8 @@ std::string getLineSrc(const DebugLoc &DL);
 
 unsigned getLineNumber(const DebugLoc &DL);
 
+unsigned getLineCol(const DebugLoc &DL);
+
 bool isNameTrivial(const StringRef &Name);
 
 } // namespace myutils
