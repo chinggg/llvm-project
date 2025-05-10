@@ -41,6 +41,24 @@ using namespace ore;
 namespace myutils {
 // Implementation of utils used by custom mutli-arch MachineFunctionPasses
 
+// This is a cache for file lines to avoid reading the same file multiple times
+static StringMap<SmallVector<std::string>> FileCache;
+
+static SmallVector<std::string>& getFileLines(StringRef FileName) {
+  auto it = FileCache.find(FileName);
+  if (it != FileCache.end()) {
+    return it->second;
+  }
+
+  std::string Line;
+  std::ifstream File(FileName.str());
+  SmallVector<std::string>& Lines = FileCache[FileName];
+  while (std::getline(File, Line)) {
+    Lines.push_back(Line);
+  }
+  return Lines;
+}
+
 template <typename T>
 std::string join(const SmallVectorImpl<T> &vec, const std::string &sep) {
   std::ostringstream sss;
@@ -85,13 +103,14 @@ std::string getLineSrc(const DebugLoc &DL) {
   }
   StringRef FileName = DL->getScope()->getFilename();
   unsigned Line = DL.getLine();
-  std::string SourceLine;
-  std::error_code EC;
-  std::ifstream File(FileName.str());
-  for (unsigned i = 0; i < Line; ++i) {
-    std::getline(File, SourceLine);
+  
+  const auto& Lines = getFileLines(FileName);
+  if (Line == 0 || Line > Lines.size()) {
+    return "";
   }
-  // escape \t in SourceLine with 4 spaces
+  
+  // Normalize the line only when it's actually needed
+  std::string SourceLine = Lines[Line - 1];
   std::replace(SourceLine.begin(), SourceLine.end(), '\t', ' ');
   // trim \n and \r from SourceLine
   SourceLine.erase(std::remove(SourceLine.begin(), SourceLine.end(), '\n'), SourceLine.end());
