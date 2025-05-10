@@ -213,18 +213,30 @@ bool dumpCjumppInsts(const MachineFunction &MF, StringRef Context, bool IsBefore
   SmallVector<unsigned, 16> AddedLines;
   SmallVector<const MachineInstr*, 16> AddedInsts;
   SmallVector<std::string, 16> AddedSrcs;
+  SmallVector<unsigned, 16> AddedCols;
+  SmallVector<std::string, 16> AddedChars;
 
   SmallVector<unsigned, 16> RemovedLines;
   SmallVector<const MachineInstr*, 16> RemovedInsts;
   SmallVector<std::string, 16> RemovedSrcs;
+  SmallVector<unsigned, 16> RemovedCols;
+  SmallVector<std::string, 16> RemovedChars;
 
   // Find added jumps
   for (size_t i = 0; i < AfterCjumpLines.size(); ++i) {
     if (std::find(BeforeCjumpLines.begin(), BeforeCjumpLines.end(), 
                  AfterCjumpLines[i]) == BeforeCjumpLines.end()) {
+      const auto DL = AfterCjumpInsts[i]->getDebugLoc();
       AddedLines.push_back(AfterCjumpLines[i]);
       AddedInsts.push_back(AfterCjumpInsts[i]);
-      AddedSrcs.push_back(AfterCjumpSrcs[i]);
+      std::string LineSrc = AfterCjumpSrcs[i];
+      AddedSrcs.push_back(LineSrc);
+      unsigned Col = getLineCol(DL);
+      AddedCols.push_back(Col);
+      if (Col > 0 && Col <= LineSrc.size())
+        AddedChars.push_back(std::string{LineSrc[Col - 1]});
+      else
+        AddedChars.push_back(std::string(""));
     }
   }
 
@@ -232,9 +244,17 @@ bool dumpCjumppInsts(const MachineFunction &MF, StringRef Context, bool IsBefore
   for (size_t i = 0; i < BeforeCjumpLines.size(); ++i) {
     if (std::find(AfterCjumpLines.begin(), AfterCjumpLines.end(), 
                  BeforeCjumpLines[i]) == BeforeCjumpLines.end()) {
+      const auto DL = BeforeCjumpInsts[i]->getDebugLoc();
       RemovedLines.push_back(BeforeCjumpLines[i]);
       RemovedInsts.push_back(BeforeCjumpInsts[i]);
-      RemovedSrcs.push_back(BeforeCjumpSrcs[i]);
+      std::string LineSrc = BeforeCjumpSrcs[i];
+      RemovedSrcs.push_back(LineSrc);
+      unsigned Col = getLineCol(DL);
+      RemovedCols.push_back(Col);
+      if (Col > 0 && Col <= LineSrc.size())
+        RemovedChars.push_back(std::string{LineSrc[Col - 1]});
+      else
+        RemovedChars.push_back(std::string(""));
     }
   }
 
@@ -252,12 +272,16 @@ bool dumpCjumppInsts(const MachineFunction &MF, StringRef Context, bool IsBefore
               << "\"cjump_count_after\": " << AfterCjumpInsts.size() << ", "
               << "\"removed_cjump_count\": " << RemovedLines.size() << ", "
               << "\"removed_cjump_lines\": [" << join(RemovedLines) << "], "
+              << "\"removed_cjump_cols\": [" << join(RemovedCols) << "], "
               << "\"removed_cjump_insts\": [" << join(RemovedInsts) << "], "
               << "\"removed_cjump_srcs\": [" << join(RemovedSrcs) << "], "
+              << "\"removed_cjump_chars\": [" << join(RemovedChars) << "], "
               << "\"added_cjump_count\": " << AddedLines.size() << ", "
               << "\"added_cjump_lines\": [" << join(AddedLines) << "], "
+              << "\"added_cjump_cols\": [" << join(AddedCols) << "], "
               << "\"added_cjump_insts\": [" << join(AddedInsts) << "], "
-              << "\"added_cjump_srcs\": [" << join(AddedSrcs) << "]"
+              << "\"added_cjump_srcs\": [" << join(AddedSrcs) << "], "
+              << "\"added_cjump_chars\": [" << join(AddedChars) << "]"
               << "}\n";
     
     // Flush the stream to ensure all content is in the string
