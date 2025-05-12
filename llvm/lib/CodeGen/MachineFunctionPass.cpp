@@ -160,7 +160,11 @@ static std::string BeforeFileName;
 static std::string BeforeContext;
 
 bool dumpCjumppInsts(const MachineFunction &MF, StringRef Context, bool IsBefore) {
+#if LLVM_VERSION_MAJOR <= 15
+  if (Context.endswith("CountInstr")) return false;
+#else
   if (Context.ends_with("CountInstr")) return false;
+#endif
 
   // Skip if function is not in print list
   if (!isFunctionInPrintList(MF.getName()))
