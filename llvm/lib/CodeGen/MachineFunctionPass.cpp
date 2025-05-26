@@ -134,6 +134,18 @@ unsigned getLineCol(const DebugLoc &DL) {
   return 0;
 }
 
+std::string getCharSrc(const DebugLoc &DL) {
+  if (!DL) {
+    return "[getDebugLoc returns null]";
+  }
+  std::string LineSrc = getLineSrc(DL);
+  unsigned Col = getLineCol(DL);
+  if (Col > 0 && Col <= LineSrc.size()) {
+    return std::string{LineSrc[Col - 1]};  // Column is 1-based, convert char to string
+  }
+  return std::string("");  // Invalid column, use empty character
+}
+
 bool isNameTrivial(const StringRef &Name) {
   const std::string TrivialKeywords[] = {".h", "include/", "third_party", "third-party", "fuzz", "test", "helper"};
   for (const auto &Keyword : TrivialKeywords) {
