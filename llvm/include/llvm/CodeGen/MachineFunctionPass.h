@@ -92,6 +92,9 @@ unsigned getLineNumber(const DebugLoc &DL);
 
 unsigned getLineCol(const DebugLoc &DL);
 
+// get character from debugloc as string, uses getLineSrc and getLineCol
+std::string getCharSrc(const DebugLoc &DL);
+
 bool isNameTrivial(const StringRef &Name);
 
 } // namespace myutils
