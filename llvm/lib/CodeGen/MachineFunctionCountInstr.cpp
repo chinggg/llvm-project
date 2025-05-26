@@ -102,10 +102,7 @@ bool MFCountInstructions::runOnMachineFunction(MachineFunction &MF) {
         CjumpSrcs.push_back(LineSrc);
         unsigned Col = getLineCol(DL);
         CjumpCols.push_back(Col);
-        if (Col > 0 && Col <= LineSrc.size())
-          CjumpChars.push_back(std::string{LineSrc[Col - 1]});  // Column is 1-based, convert char to string
-        else
-          CjumpChars.push_back(std::string(""));  // Invalid column, use empty character
+        CjumpChars.push_back(getCharSrc(DL));  // Get character from debug location
       }
     }
   }
