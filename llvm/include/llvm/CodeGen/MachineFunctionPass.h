@@ -97,6 +97,8 @@ std::string getCharSrc(const DebugLoc &DL);
 
 bool isNameTrivial(const StringRef &Name);
 
+bool isDivisionMachineInstruction(const MachineInstr &MI);
+
 } // namespace myutils
 
 #endif
