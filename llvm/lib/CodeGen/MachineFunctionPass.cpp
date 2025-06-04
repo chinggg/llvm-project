@@ -24,6 +24,8 @@
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachineOptimizationRemarkEmitter.h"
 #include "llvm/CodeGen/Passes.h"
+#include "llvm/CodeGen/TargetInstrInfo.h"
+#include "llvm/CodeGen/TargetOpcodes.h"
 #include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/Function.h"
@@ -154,6 +156,37 @@ bool isNameTrivial(const StringRef &Name) {
     }
   }
   return false;
+}
+
+/// Helper function to check if a machine instruction is a division
+bool isDivisionMachineInstruction(const MachineInstr &MI) {
+  unsigned Opcode = MI.getOpcode();
+  
+  // Check for generic division opcodes defined in TargetOpcodes.def
+  switch (Opcode) {
+  case TargetOpcode::G_SDIV:     // Generic signed division
+  case TargetOpcode::G_UDIV:     // Generic unsigned division
+  case TargetOpcode::G_FDIV:     // Generic floating-point division
+  case TargetOpcode::G_SREM:     // Generic signed remainder
+  case TargetOpcode::G_UREM:     // Generic unsigned remainder
+  case TargetOpcode::G_FREM:     // Generic floating-point remainder
+  case TargetOpcode::G_SDIVREM:  // Generic signed divrem
+  case TargetOpcode::G_UDIVREM:  // Generic unsigned divrem
+  case TargetOpcode::G_SDIVFIX:  // Generic signed fixed point division
+  case TargetOpcode::G_UDIVFIX:  // Generic unsigned fixed point division
+  case TargetOpcode::G_SDIVFIXSAT: // Generic signed saturating fixed point division
+  case TargetOpcode::G_UDIVFIXSAT: // Generic unsigned saturating fixed point division
+    return true;
+  default:
+    // For target-specific division instructions, we can still fall back to name checking
+    // but only for opcodes that are not generic
+    if (isTargetSpecificOpcode(Opcode)) {
+      const TargetInstrInfo *TII = MI.getParent()->getParent()->getSubtarget().getInstrInfo();
+      StringRef OpcodeName = TII->getName(Opcode);
+      return OpcodeName.contains_insensitive("div");
+    }
+    return false;
+  }
 }
 
 } // namespace myutils
