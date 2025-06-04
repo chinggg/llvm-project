@@ -27,6 +27,7 @@ static cl::opt<std::string>
             cl::init(""), cl::Hidden);
 
 namespace {
+
 /// MachineFunctionCountInstr - This is a architecture-independent
 /// pass to dump cjump instructions of a MachineFunction.
 ///
@@ -66,25 +67,72 @@ bool MFCountInstructions::runOnMachineFunction(MachineFunction &MF) {
     return false;
 
   // Instruction counters and line numbers
-  SmallVector<const Instruction*, 16> SelectInsts;
-  SmallVector<const MachineInstr*, 16> CjumpInsts;
-  SmallVector<std::string, 16> SelectSrcs;
+  // SmallVector<const Instruction*, 16> CondInsts;  // IR conditional branches
+  SmallVector<const MachineInstr*, 16> CjumpInsts;  // MIR conditional branches
+  // SmallVector<const Instruction*, 16> DivInsts;  // IR division instructions
+  SmallVector<const MachineInstr*, 16> MDivInsts;  // MIR division instructions
+  // SmallVector<const Instruction*, 16> MemInsts;  // IR memory operations
+  SmallVector<const MachineInstr*, 16> MMemInsts;  // MIR memory operations
+  // SmallVector<std::string, 16> CondSrcs;
   SmallVector<std::string, 16> CjumpSrcs;
-  SmallVector<unsigned, 16> SelectLines;
+  // SmallVector<std::string, 16> DivSrcs;
+  SmallVector<std::string, 16> MDivSrcs;
+  // SmallVector<std::string, 16> MemSrcs;
+  SmallVector<std::string, 16> MMemSrcs;
+  // SmallVector<unsigned, 16> CondLines;
   SmallVector<unsigned, 16> CjumpLines;
   SmallVector<unsigned, 16> CjumpCols;
+  // SmallVector<unsigned, 16> DivLines;
+  SmallVector<unsigned, 16> MDivLines;
+  SmallVector<unsigned, 16> MDivCols;
+  // SmallVector<unsigned, 16> MemLines;
+  SmallVector<unsigned, 16> MMemLines;
+  SmallVector<unsigned, 16> MMemCols;
+  // SmallVector<std::string, 16> CondChars;
   SmallVector<std::string, 16> CjumpChars;
+  // SmallVector<std::string, 16> DivChars;
+  SmallVector<std::string, 16> MDivChars;
+  // SmallVector<std::string, 16> MemChars;
+  SmallVector<std::string, 16> MMemChars;
 
-  // Iterate through the LLVM IR instructions to count SelectInst
+  // Add vectors for memory operations
+
+  // Iterate through the LLVM IR to count branch, divisions, and memory operations
   const Function &F = MF.getFunction();
   for (const BasicBlock &BB : F) {
     for (const Instruction &I : BB) {
       if (!I.getDebugLoc()) continue;
-      if (isa<SelectInst>(&I)) {
-        SelectInsts.push_back(&I);
-        SelectLines.push_back(getLineNumber(I.getDebugLoc()));
-        SelectSrcs.push_back(getLineSrc(I.getDebugLoc()));
-      }
+      // if (isa<SelectInst>(I)) {
+      // if (isa<BranchInst>(I) && cast<BranchInst>(I).isConditional()) {
+      //   CondInsts.push_back(&I);
+      //   CondLines.push_back(getLineNumber(I.getDebugLoc()));
+      //   CondSrcs.push_back(getLineSrc(I.getDebugLoc()));
+      //   CondChars.push_back(getCharSrc(I.getDebugLoc()));
+      //   continue;
+      // }
+      // IR division instructions (sdiv, udiv, fdiv), but not needed
+      // if (auto *BinOp = dyn_cast<BinaryOperator>(&I)) {
+      //   switch (BinOp->getOpcode()) {
+      //   case Instruction::SDiv:
+      //   case Instruction::UDiv:
+      //   case Instruction::FDiv:
+      //   case Instruction::URem:
+      //   case Instruction::SRem:
+      //   case Instruction::FRem:
+      //     DivInsts.push_back(&I);
+      //     DivLines.push_back(getLineNumber(I.getDebugLoc()));
+      //     DivSrcs.push_back(getLineSrc(I.getDebugLoc()));
+      //     DivChars.push_back(getCharSrc(I.getDebugLoc()));
+      //   }
+      // }
+      // Detect memory operations in IR
+      // if (isa<LoadInst>(I) || isa<StoreInst>(I)) {
+      // || isa<AtomicRMWInst>(&I) || isa<AtomicCmpXchgInst>(&I) || isa<GetElementPtrInst>(&I)) {
+      //   MemInsts.push_back(&I);
+      //   MemLines.push_back(getLineNumber(I.getDebugLoc()));
+      //   MemSrcs.push_back(getLineSrc(I.getDebugLoc()));
+      //   MemChars.push_back(getCharSrc(I.getDebugLoc()));
+      // }
     }
   }
 
@@ -98,11 +146,27 @@ bool MFCountInstructions::runOnMachineFunction(MachineFunction &MF) {
         CjumpInsts.push_back(&MI);
         const auto DL = MI.getDebugLoc();
         CjumpLines.push_back(getLineNumber(DL));
-        std::string LineSrc = getLineSrc(DL);
-        CjumpSrcs.push_back(LineSrc);
-        unsigned Col = getLineCol(DL);
-        CjumpCols.push_back(Col);
-        CjumpChars.push_back(getCharSrc(DL));  // Get character from debug location
+        CjumpSrcs.push_back(getLineSrc(DL));
+        CjumpCols.push_back(getLineCol(DL));
+        CjumpChars.push_back(getCharSrc(DL));
+      }
+      // Detect division instructions in Machine IR
+      if (isDivisionMachineInstruction(MI)) {
+        MDivInsts.push_back(&MI);
+        const auto DL = MI.getDebugLoc();
+        MDivLines.push_back(getLineNumber(DL));
+        MDivSrcs.push_back(getLineSrc(DL));
+        MDivCols.push_back(getLineCol(DL));
+        MDivChars.push_back(getCharSrc(DL));
+      }
+      // Detect memory operations in Machine IR
+      if (MI.mayLoadOrStore()) {
+        MMemInsts.push_back(&MI);
+        const auto DL = MI.getDebugLoc();
+        MMemLines.push_back(getLineNumber(DL));
+        MMemSrcs.push_back(getLineSrc(DL));
+        MMemCols.push_back(getLineCol(DL));
+        MMemChars.push_back(getCharSrc(DL));
       }
     }
   }
@@ -114,22 +178,39 @@ bool MFCountInstructions::runOnMachineFunction(MachineFunction &MF) {
            << "\"function\": \"" << MF.getName() << "\", "
            << "\"file\": \"" << FileName << "\", "
            << "\"context\": \"" << getPassName() << "\", "
-           << "\"select_count\": " << SelectInsts.size() << ", "
-           << "\"select_lines\": [" << join(SelectLines) << "], "
-           << "\"select_insts\": [" << join(SelectInsts) << "], "
-           << "\"select_srcs\": [" << join(SelectSrcs) << "], "
+          // NOTE: will be printed in IRCountInstr instead
+          //  << "\"cond_count\": " << CondInsts.size() << ", "
+          //  << "\"cond_lines\": [" << join(CondLines) << "], "
+          //  << "\"cond_insts\": [" << join(CondInsts) << "], "
+          //  << "\"cond_srcs\": [" << join(CondSrcs) << "], "
+          //  << "\"cond_chars\": [" << join(CondChars) << "], "
            << "\"cjump_count\": " << CjumpInsts.size() << ", "
            << "\"cjump_lines\": [" << join(CjumpLines) << "], "
            << "\"cjump_cols\": [" << join(CjumpCols) << "], "
            << "\"cjump_insts\": [" << join(CjumpInsts) << "], "
            << "\"cjump_srcs\": [" << join(CjumpSrcs) << "], "
-           << "\"cjump_chars\": [" << join(CjumpChars) << "]"
+           << "\"cjump_chars\": [" << join(CjumpChars) << "], "
+           << "\"mdiv_count\": " << MDivInsts.size() << ", "
+           << "\"mdiv_lines\": [" << join(MDivLines) << "], "
+           << "\"mdiv_cols\": [" << join(MDivCols) << "], "
+           << "\"mdiv_insts\": [" << join(MDivInsts) << "], "
+           << "\"mdiv_srcs\": [" << join(MDivSrcs) << "], "
+           << "\"mdiv_chars\": [" << join(MDivChars) << "], "
+          //  << "\"mem_count\": " << MemInsts.size() << ", "
+          //  << "\"mem_lines\": [" << join(MemLines) << "], "
+          //  << "\"mem_insts\": [" << join(MemInsts) << "], "
+          //  << "\"mem_srcs\": [" << join(MemSrcs) << "], "
+          //  << "\"mem_chars\": [" << join(MemChars) << "], "
+           << "\"mmem_count\": " << MMemInsts.size() << ", "
+           << "\"mmem_lines\": [" << join(MMemLines) << "], "
+           << "\"mmem_cols\": [" << join(MMemCols) << "], "
+           << "\"mmem_insts\": [" << join(MMemInsts) << "], "
+           << "\"mmem_srcs\": [" << join(MMemSrcs) << "], "
+           << "\"mmem_chars\": [" << join(MMemChars) << "]"
            << "}\n";
   
-  // Flush the stream to ensure all content is in the string
-  JsonStream.flush();
-  
-  // Output the complete JSON string - no lock needed as each write to errs() is atomic
+  // Output JSON to stderr, which is unbuffered by default so no need to flush
+  // Inter-Process output interleaving is prevented on build-system level (eg. make --output-sync)
   errs() << JsonOutput;
 
   // Only dump function and machine function if a dump directory is specified
