@@ -187,6 +187,65 @@ bool isDivisionMachineInstruction(const MachineInstr &MI) {
   }
 }
 
+// Helper function to find differences between before and after instruction sets
+template<typename T>
+void findInstructionDifferences(const SmallVectorImpl<T>& beforeInsts,
+                                const SmallVectorImpl<unsigned>& beforeLines,
+                                const SmallVectorImpl<unsigned>& beforeCols,
+                                const SmallVectorImpl<std::string>& beforeSrcs,
+                                const SmallVectorImpl<T>& afterInsts,
+                                const SmallVectorImpl<unsigned>& afterLines,
+                                const SmallVectorImpl<unsigned>& afterCols,
+                                const SmallVectorImpl<std::string>& afterSrcs,
+                                SmallVectorImpl<unsigned>& addedLines,
+                                SmallVectorImpl<T>& addedInsts,
+                                SmallVectorImpl<std::string>& addedSrcs,
+                                SmallVectorImpl<unsigned>& addedCols,
+                                SmallVectorImpl<std::string>& addedChars,
+                                SmallVectorImpl<unsigned>& removedLines,
+                                SmallVectorImpl<T>& removedInsts,
+                                SmallVectorImpl<std::string>& removedSrcs,
+                                SmallVectorImpl<unsigned>& removedCols,
+                                SmallVectorImpl<std::string>& removedChars) {
+  // Find added instructions - use line+col combination for precise matching
+  for (size_t i = 0; i < afterLines.size(); ++i) {
+    bool found = false;
+    for (size_t j = 0; j < beforeLines.size(); ++j) {
+      if (afterLines[i] == beforeLines[j] && afterCols[i] == beforeCols[j]) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      const auto DL = afterInsts[i]->getDebugLoc();
+      addedLines.push_back(afterLines[i]);
+      addedInsts.push_back(afterInsts[i]);
+      addedSrcs.push_back(afterSrcs[i]);
+      addedCols.push_back(afterCols[i]);
+      addedChars.push_back(getCharSrc(DL));
+    }
+  }
+
+  // Find removed instructions - use line+col combination for precise matching
+  for (size_t i = 0; i < beforeLines.size(); ++i) {
+    bool found = false;
+    for (size_t j = 0; j < afterLines.size(); ++j) {
+      if (beforeLines[i] == afterLines[j] && beforeCols[i] == afterCols[j]) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      const auto DL = beforeInsts[i]->getDebugLoc();
+      removedLines.push_back(beforeLines[i]);
+      removedInsts.push_back(beforeInsts[i]);
+      removedSrcs.push_back(beforeSrcs[i]);
+      removedCols.push_back(beforeCols[i]);
+      removedChars.push_back(getCharSrc(DL));
+    }
+  }
+}
+
 } // namespace myutils
 
 using namespace myutils;
@@ -200,11 +259,20 @@ static cl::opt<bool>
 static SmallVector<const MachineInstr*, 16> BeforeCjumpInsts;
 static SmallVector<std::string, 16> BeforeCjumpSrcs;
 static SmallVector<unsigned, 16> BeforeCjumpLines;
+static SmallVector<unsigned, 16> BeforeCjumpCols;
+static SmallVector<const MachineInstr*, 16> BeforeMDivInsts;
+static SmallVector<std::string, 16> BeforeMDivSrcs;
+static SmallVector<unsigned, 16> BeforeMDivLines;
+static SmallVector<unsigned, 16> BeforeMDivCols;
+static SmallVector<const MachineInstr*, 16> BeforeMMemInsts;
+static SmallVector<std::string, 16> BeforeMMemSrcs;
+static SmallVector<unsigned, 16> BeforeMMemLines;
+static SmallVector<unsigned, 16> BeforeMMemCols;
 static std::string BeforeFunction;
 static std::string BeforeFileName;
 static std::string BeforeContext;
 
-bool dumpCjumppInsts(const MachineFunction &MF, StringRef Context, bool IsBefore) {
+bool dumpInsts(const MachineFunction &MF, StringRef Context, bool IsBefore) {
 #if LLVM_VERSION_MAJOR <= 15
   if (Context.endswith("CountInstr")) return false;
 #else
@@ -227,14 +295,38 @@ bool dumpCjumppInsts(const MachineFunction &MF, StringRef Context, bool IsBefore
     BeforeCjumpInsts.clear();
     BeforeCjumpSrcs.clear();
     BeforeCjumpLines.clear();
+    BeforeCjumpCols.clear();
+    BeforeMDivInsts.clear();
+    BeforeMDivSrcs.clear();
+    BeforeMDivLines.clear();
+    BeforeMDivCols.clear();
+    BeforeMMemInsts.clear();
+    BeforeMMemSrcs.clear();
+    BeforeMMemLines.clear();
+    BeforeMMemCols.clear();
 
-    // Collect all conditional jumps
+    // Collect all conditional jumps, divisions, and memory operations
     for (const MachineBasicBlock &MBB : MF) {
       for (const MachineInstr &MI : MBB) {
         if (MI.getDesc().isBranch() && MI.getDesc().isConditionalBranch()) {
           BeforeCjumpInsts.push_back(&MI);
-          BeforeCjumpLines.push_back(getLineNumber(MI.getDebugLoc()));
           BeforeCjumpSrcs.push_back(getLineSrc(MI.getDebugLoc()));
+          BeforeCjumpLines.push_back(getLineNumber(MI.getDebugLoc()));
+          BeforeCjumpCols.push_back(getLineCol(MI.getDebugLoc()));
+        }
+        // Check for division instructions
+        if (isDivisionMachineInstruction(MI)) {
+          BeforeMDivInsts.push_back(&MI);
+          BeforeMDivSrcs.push_back(getLineSrc(MI.getDebugLoc()));
+          BeforeMDivLines.push_back(getLineNumber(MI.getDebugLoc()));
+          BeforeMDivCols.push_back(getLineCol(MI.getDebugLoc()));
+        }
+        // Check for memory operations
+        if (MI.mayLoadOrStore() && !MI.isReturn() && !MI.isCall() && !MI.hasImplicitDef()) {
+          BeforeMMemInsts.push_back(&MI);
+          BeforeMMemSrcs.push_back(getLineSrc(MI.getDebugLoc()));
+          BeforeMMemLines.push_back(getLineNumber(MI.getDebugLoc()));
+          BeforeMMemCols.push_back(getLineCol(MI.getDebugLoc()));
         }
       }
     }
@@ -245,95 +337,152 @@ bool dumpCjumppInsts(const MachineFunction &MF, StringRef Context, bool IsBefore
   SmallVector<const MachineInstr*, 16> AfterCjumpInsts;
   SmallVector<std::string, 16> AfterCjumpSrcs;
   SmallVector<unsigned, 16> AfterCjumpLines;
+  SmallVector<unsigned, 16> AfterCjumpCols;
+  SmallVector<const MachineInstr*, 16> AfterMDivInsts;
+  SmallVector<std::string, 16> AfterMDivSrcs;
+  SmallVector<unsigned, 16> AfterMDivLines;
+  SmallVector<unsigned, 16> AfterMDivCols;
+  SmallVector<const MachineInstr*, 16> AfterMMemInsts;
+  SmallVector<std::string, 16> AfterMMemSrcs;
+  SmallVector<unsigned, 16> AfterMMemLines;
+  SmallVector<unsigned, 16> AfterMMemCols;
 
   for (const MachineBasicBlock &MBB : MF) {
     for (const MachineInstr &MI : MBB) {
       if (MI.getDesc().isBranch() && MI.getDesc().isConditionalBranch()) {
         AfterCjumpInsts.push_back(&MI);
-        AfterCjumpLines.push_back(getLineNumber(MI.getDebugLoc()));
         AfterCjumpSrcs.push_back(getLineSrc(MI.getDebugLoc()));
+        AfterCjumpLines.push_back(getLineNumber(MI.getDebugLoc()));
+        AfterCjumpCols.push_back(getLineCol(MI.getDebugLoc()));
+      }
+      if (isDivisionMachineInstruction(MI)) {
+        AfterMDivInsts.push_back(&MI);
+        AfterMDivSrcs.push_back(getLineSrc(MI.getDebugLoc()));
+        AfterMDivLines.push_back(getLineNumber(MI.getDebugLoc()));
+        AfterMDivCols.push_back(getLineCol(MI.getDebugLoc()));
+      }
+      if (MI.mayLoadOrStore()) {
+        AfterMMemInsts.push_back(&MI);
+        AfterMMemSrcs.push_back(getLineSrc(MI.getDebugLoc()));
+        AfterMMemLines.push_back(getLineNumber(MI.getDebugLoc()));
+        AfterMMemCols.push_back(getLineCol(MI.getDebugLoc()));
       }
     }
   }
 
-  // Find added and removed jumps based on line numbers
-  // (using line numbers as a proxy for identifying the same jump)
-  SmallVector<unsigned, 16> AddedLines;
-  SmallVector<const MachineInstr*, 16> AddedInsts;
-  SmallVector<std::string, 16> AddedSrcs;
-  SmallVector<unsigned, 16> AddedCols;
-  SmallVector<std::string, 16> AddedChars;
+  // Find added and removed instructions using helper function
+  SmallVector<const MachineInstr*, 16> AddedCjumpInsts, RemovedCjumpInsts;
+  SmallVector<unsigned, 16> AddedCjumpLines, RemovedCjumpLines;
+  SmallVector<unsigned, 16> AddedCjumpCols, RemovedCjumpCols;
+  SmallVector<std::string, 16> AddedCjumpSrcs, RemovedCjumpSrcs;
+  SmallVector<std::string, 16> AddedCjumpChars, RemovedCjumpChars;
 
-  SmallVector<unsigned, 16> RemovedLines;
-  SmallVector<const MachineInstr*, 16> RemovedInsts;
-  SmallVector<std::string, 16> RemovedSrcs;
-  SmallVector<unsigned, 16> RemovedCols;
-  SmallVector<std::string, 16> RemovedChars;
+  SmallVector<const MachineInstr*, 16> AddedMDivInsts, RemovedMDivInsts;
+  SmallVector<unsigned, 16> AddedMDivLines, RemovedMDivLines;
+  SmallVector<unsigned, 16> AddedMDivCols, RemovedMDivCols;
+  SmallVector<std::string, 16> AddedMDivSrcs, RemovedMDivSrcs;
+  SmallVector<std::string, 16> AddedMDivChars, RemovedMDivChars;
 
-  // Find added jumps
-  for (size_t i = 0; i < AfterCjumpLines.size(); ++i) {
-    if (std::find(BeforeCjumpLines.begin(), BeforeCjumpLines.end(), 
-                 AfterCjumpLines[i]) == BeforeCjumpLines.end()) {
-      const auto DL = AfterCjumpInsts[i]->getDebugLoc();
-      AddedLines.push_back(AfterCjumpLines[i]);
-      AddedInsts.push_back(AfterCjumpInsts[i]);
-      std::string LineSrc = AfterCjumpSrcs[i];
-      AddedSrcs.push_back(LineSrc);
-      unsigned Col = getLineCol(DL);
-      AddedCols.push_back(Col);
-      if (Col > 0 && Col <= LineSrc.size())
-        AddedChars.push_back(std::string{LineSrc[Col - 1]});
-      else
-        AddedChars.push_back(std::string(""));
-    }
-  }
+  SmallVector<const MachineInstr*, 16> AddedMMemInsts, RemovedMMemInsts;
+  SmallVector<unsigned, 16> AddedMMemLines, RemovedMMemLines;
+  SmallVector<unsigned, 16> AddedMMemCols, RemovedMMemCols;
+  SmallVector<std::string, 16> AddedMMemSrcs, RemovedMMemSrcs;
+  SmallVector<std::string, 16> AddedMMemChars, RemovedMMemChars;
 
-  // Find removed jumps
-  for (size_t i = 0; i < BeforeCjumpLines.size(); ++i) {
-    if (std::find(AfterCjumpLines.begin(), AfterCjumpLines.end(), 
-                 BeforeCjumpLines[i]) == BeforeCjumpLines.end()) {
-      const auto DL = BeforeCjumpInsts[i]->getDebugLoc();
-      RemovedLines.push_back(BeforeCjumpLines[i]);
-      RemovedInsts.push_back(BeforeCjumpInsts[i]);
-      std::string LineSrc = BeforeCjumpSrcs[i];
-      RemovedSrcs.push_back(LineSrc);
-      unsigned Col = getLineCol(DL);
-      RemovedCols.push_back(Col);
-      if (Col > 0 && Col <= LineSrc.size())
-        RemovedChars.push_back(std::string{LineSrc[Col - 1]});
-      else
-        RemovedChars.push_back(std::string(""));
-    }
-  }
+  // Find added/removed conditional jumps
+  findInstructionDifferences(BeforeCjumpInsts, BeforeCjumpLines, BeforeCjumpCols, BeforeCjumpSrcs,
+                            AfterCjumpInsts, AfterCjumpLines, AfterCjumpCols, AfterCjumpSrcs,
+                            AddedCjumpLines, AddedCjumpInsts, AddedCjumpSrcs, AddedCjumpCols, AddedCjumpChars,
+                            RemovedCjumpLines, RemovedCjumpInsts, RemovedCjumpSrcs, RemovedCjumpCols, RemovedCjumpChars);
+
+  // Find added/removed divisions
+  findInstructionDifferences(BeforeMDivInsts, BeforeMDivLines, BeforeMDivCols, BeforeMDivSrcs,
+                            AfterMDivInsts, AfterMDivLines, AfterMDivCols, AfterMDivSrcs,
+                            AddedMDivLines, AddedMDivInsts, AddedMDivSrcs, AddedMDivCols, AddedMDivChars,
+                            RemovedMDivLines, RemovedMDivInsts, RemovedMDivSrcs, RemovedMDivCols, RemovedMDivChars);
+
+  // Find added/removed memory operations
+  findInstructionDifferences(BeforeMMemInsts, BeforeMMemLines, BeforeMMemCols, BeforeMMemSrcs,
+                            AfterMMemInsts, AfterMMemLines, AfterMMemCols, AfterMMemSrcs,
+                            AddedMMemLines, AddedMMemInsts, AddedMMemSrcs, AddedMMemCols, AddedMMemChars,
+                            RemovedMMemLines, RemovedMMemInsts, RemovedMMemSrcs, RemovedMMemCols, RemovedMMemChars);
 
   // Only print if there were changes
-  if (!AddedLines.empty() || !RemovedLines.empty()) {
+  if (!AddedCjumpLines.empty() || !RemovedCjumpLines.empty() || 
+      !AddedMDivLines.empty() || !RemovedMDivLines.empty() ||
+      !AddedMMemLines.empty() || !RemovedMMemLines.empty()) {
     // Build the complete JSON string in memory before outputting
     std::string JsonOutput;
     raw_string_ostream JsonStream(JsonOutput);
     
     JsonStream << "{"
-              << "\"function\": \"" << BeforeFunction << "\", "
-              << "\"file\": \"" << BeforeFileName << "\", "
-              << "\"context\": \"" << BeforeContext << "\", "
-              << "\"cjump_count_before\": " << BeforeCjumpInsts.size() << ", "
-              << "\"cjump_count_after\": " << AfterCjumpInsts.size() << ", "
-              << "\"removed_cjump_count\": " << RemovedLines.size() << ", "
-              << "\"removed_cjump_lines\": [" << join(RemovedLines) << "], "
-              << "\"removed_cjump_cols\": [" << join(RemovedCols) << "], "
-              << "\"removed_cjump_insts\": [" << join(RemovedInsts) << "], "
-              << "\"removed_cjump_srcs\": [" << join(RemovedSrcs) << "], "
-              << "\"removed_cjump_chars\": [" << join(RemovedChars) << "], "
-              << "\"added_cjump_count\": " << AddedLines.size() << ", "
-              << "\"added_cjump_lines\": [" << join(AddedLines) << "], "
-              << "\"added_cjump_cols\": [" << join(AddedCols) << "], "
-              << "\"added_cjump_insts\": [" << join(AddedInsts) << "], "
-              << "\"added_cjump_srcs\": [" << join(AddedSrcs) << "], "
-              << "\"added_cjump_chars\": [" << join(AddedChars) << "]"
-              << "}\n";
-    
-    // Flush the stream to ensure all content is in the string
-    JsonStream.flush();
+      << "\"function\": \"" << BeforeFunction << "\","
+      << "\"file\": \"" << BeforeFileName << "\","
+      << "\"context\": \"" << BeforeContext << "\","
+      // Conditional jump stats 
+      << "\"cjump_count_before\": " << BeforeCjumpInsts.size() << ","
+      << "\"cjump_count_after\": " << AfterCjumpInsts.size() << ","
+      << "\"removed_cjump_count\": " << RemovedCjumpLines.size() << ","
+      << "\"added_cjump_count\": " << AddedCjumpLines.size();
+    // Removed conditional jumps
+    if (!RemovedCjumpLines.empty()) {
+      JsonStream << ",\"removed_cjump_lines\": [" << join(RemovedCjumpLines, ",") << "]"
+      << ",\"removed_cjump_cols\": [" << join(RemovedCjumpCols, ",") << "]"
+      << ",\"removed_cjump_insts\": [" << join(RemovedCjumpInsts, ",") << "]"
+      << ",\"removed_cjump_srcs\": [" << join(RemovedCjumpSrcs, ",") << "]"
+      << ",\"removed_cjump_chars\": [" << join(RemovedCjumpChars, ",") << "]";
+    }
+    // Added conditional jumps  
+    if (!AddedCjumpLines.empty()) {
+      JsonStream << ",\"added_cjump_lines\": [" << join(AddedCjumpLines, ",") << "]"
+      << ",\"added_cjump_cols\": [" << join(AddedCjumpCols, ",") << "]"
+      << ",\"added_cjump_insts\": [" << join(AddedCjumpInsts, ",") << "]"
+      << ",\"added_cjump_srcs\": [" << join(AddedCjumpSrcs, ",") << "]"
+      << ",\"added_cjump_chars\": [" << join(AddedCjumpChars, ",") << "]";
+    }
+    // Division instruction stats
+    JsonStream << ",\"mdiv_count_before\": " << BeforeMDivInsts.size() << ","
+      << "\"mdiv_count_after\": " << AfterMDivInsts.size() << ","
+      << "\"removed_mdiv_count\": " << RemovedMDivLines.size() << ","
+      << "\"added_mdiv_count\": " << AddedMDivLines.size();
+    // Removed division instructions
+    if (!RemovedMDivLines.empty()) {
+      JsonStream << ",\"removed_mdiv_lines\": [" << join(RemovedMDivLines, ",") << "]"
+      << ",\"removed_mdiv_cols\": [" << join(RemovedMDivCols, ",") << "]"
+      << ",\"removed_mdiv_insts\": [" << join(RemovedMDivInsts, ",") << "]"
+      << ",\"removed_mdiv_srcs\": [" << join(RemovedMDivSrcs, ",") << "]"
+      << ",\"removed_mdiv_chars\": [" << join(RemovedMDivChars, ",") << "]";
+    }
+    // Added division instructions 
+    if (!AddedMDivLines.empty()) {
+      JsonStream << ",\"added_mdiv_lines\": [" << join(AddedMDivLines, ",") << "]"
+      << ",\"added_mdiv_cols\": [" << join(AddedMDivCols, ",") << "]"
+      << ",\"added_mdiv_insts\": [" << join(AddedMDivInsts, ",") << "]"
+      << ",\"added_mdiv_srcs\": [" << join(AddedMDivSrcs, ",") << "]"
+      << ",\"added_mdiv_chars\": [" << join(AddedMDivChars, ",") << "]";
+    }
+    // Memory operation stats
+    JsonStream << ",\"mmem_count_before\": " << BeforeMMemInsts.size() << ","
+      << "\"mmem_count_after\": " << AfterMMemInsts.size() << ","
+      << "\"removed_mmem_count\": " << RemovedMMemLines.size() << ","
+      << "\"added_mmem_count\": " << AddedMMemLines.size();
+    // Removed memory operations
+    if (!RemovedMMemLines.empty()) {
+      JsonStream << ",\"removed_mmem_lines\": [" << join(RemovedMMemLines, ",") << "]"
+      << ",\"removed_mmem_cols\": [" << join(RemovedMMemCols, ",") << "]"
+      << ",\"removed_mmem_insts\": [" << join(RemovedMMemInsts, ",") << "]"
+      << ",\"removed_mmem_srcs\": [" << join(RemovedMMemSrcs, ",") << "]"
+      << ",\"removed_mmem_chars\": [" << join(RemovedMMemChars, ",") << "]";
+    }
+    // Added memory operations
+    if (!AddedMMemLines.empty()) {
+      JsonStream << ",\"added_mmem_lines\": [" << join(AddedMMemLines, ",") << "]"
+      << ",\"added_mmem_cols\": [" << join(AddedMMemCols, ",") << "]"
+      << ",\"added_mmem_insts\": [" << join(AddedMMemInsts, ",") << "]"
+      << ",\"added_mmem_srcs\": [" << join(AddedMMemSrcs, ",") << "]"
+      << ",\"added_mmem_chars\": [" << join(AddedMMemChars, ",") << "]";
+    }
+    JsonStream << "}\n";
     
     // Output the complete JSON string - no lock needed as each write to errs() is atomic
     errs() << JsonOutput;
@@ -341,7 +490,7 @@ bool dumpCjumppInsts(const MachineFunction &MF, StringRef Context, bool IsBefore
     return true;
   }
   
-  // No changes to cjumps
+  // No changes to cjumps, divisions, or memory operations
   return false;
 }
 
@@ -386,11 +535,11 @@ bool MachineFunctionPass::runOnFunction(Function &F) {
     CountBefore = MF.getInstructionCount();
 
   if (EnableMFPassDump) {
-    dumpCjumppInsts(MF, getPassName(), true);
+    dumpInsts(MF, getPassName(), true);
   }
   bool RV = runOnMachineFunction(MF);
   if (EnableMFPassDump) {
-    dumpCjumppInsts(MF, getPassName(), false);
+    dumpInsts(MF, getPassName(), false);
   }
 
   if (ShouldEmitSizeRemarks) {
