@@ -62,6 +62,14 @@ static SmallVector<std::string>& getFileLines(StringRef FileName) {
   return Lines;
 }
 
+// Helper function to convert MachineInstr to string  
+std::string getInstStr(const MachineInstr &MI) {
+  std::string instStr;
+  raw_string_ostream ss(instStr);
+  ss << MI;
+  return instStr;
+}
+
 template <typename T>
 std::string join(const SmallVectorImpl<T> &vec, const std::string &sep) {
   std::ostringstream sss;
@@ -104,7 +112,7 @@ std::string getLineSrc(const DebugLoc &DL) {
   if (!DL) {
     return "[getDebugLoc returns null]";
   }
-  StringRef FileName = DL->getScope()->getFilename();
+  StringRef FileName = DL->getFilename();
   unsigned Line = DL.getLine();
   
   const auto& Lines = getFileLines(FileName);
@@ -194,10 +202,12 @@ void findInstructionDifferences(const SmallVectorImpl<T>& beforeInsts,
                                 const SmallVectorImpl<unsigned>& beforeLines,
                                 const SmallVectorImpl<unsigned>& beforeCols,
                                 const SmallVectorImpl<std::string>& beforeSrcs,
+                                const SmallVectorImpl<std::string>& beforeChars,
                                 const SmallVectorImpl<T>& afterInsts,
                                 const SmallVectorImpl<unsigned>& afterLines,
                                 const SmallVectorImpl<unsigned>& afterCols,
                                 const SmallVectorImpl<std::string>& afterSrcs,
+                                const SmallVectorImpl<std::string>& afterChars,
                                 SmallVectorImpl<unsigned>& addedLines,
                                 SmallVectorImpl<T>& addedInsts,
                                 SmallVectorImpl<std::string>& addedSrcs,
@@ -218,12 +228,11 @@ void findInstructionDifferences(const SmallVectorImpl<T>& beforeInsts,
       }
     }
     if (!found) {
-      const auto DL = afterInsts[i]->getDebugLoc();
       addedLines.push_back(afterLines[i]);
       addedInsts.push_back(afterInsts[i]);
       addedSrcs.push_back(afterSrcs[i]);
       addedCols.push_back(afterCols[i]);
-      addedChars.push_back(getCharSrc(DL));
+      addedChars.push_back(afterChars[i]);
     }
   }
 
@@ -237,12 +246,11 @@ void findInstructionDifferences(const SmallVectorImpl<T>& beforeInsts,
       }
     }
     if (!found) {
-      const auto DL = beforeInsts[i]->getDebugLoc();
       removedLines.push_back(beforeLines[i]);
       removedInsts.push_back(beforeInsts[i]);
       removedSrcs.push_back(beforeSrcs[i]);
       removedCols.push_back(beforeCols[i]);
-      removedChars.push_back(getCharSrc(DL));
+      removedChars.push_back(beforeChars[i]);
     }
   }
 }
@@ -257,18 +265,21 @@ static cl::opt<bool>
                       cl::init(false), cl::Hidden);
 
 // This will collect conditional jump information and store it for later comparison
-static SmallVector<const MachineInstr*, 16> BeforeCjumpInsts;
+static SmallVector<std::string, 16> BeforeCjumpInsts;
 static SmallVector<std::string, 16> BeforeCjumpSrcs;
 static SmallVector<unsigned, 16> BeforeCjumpLines;
 static SmallVector<unsigned, 16> BeforeCjumpCols;
-static SmallVector<const MachineInstr*, 16> BeforeMDivInsts;
+static SmallVector<std::string, 16> BeforeCjumpChars;
+static SmallVector<std::string, 16> BeforeMDivInsts;
 static SmallVector<std::string, 16> BeforeMDivSrcs;
 static SmallVector<unsigned, 16> BeforeMDivLines;
 static SmallVector<unsigned, 16> BeforeMDivCols;
-static SmallVector<const MachineInstr*, 16> BeforeMMemInsts;
+static SmallVector<std::string, 16> BeforeMDivChars;
+static SmallVector<std::string, 16> BeforeMMemInsts;
 static SmallVector<std::string, 16> BeforeMMemSrcs;
 static SmallVector<unsigned, 16> BeforeMMemLines;
 static SmallVector<unsigned, 16> BeforeMMemCols;
+static SmallVector<std::string, 16> BeforeMMemChars;
 static std::string BeforeFunction;
 static std::string BeforeFileName;
 static std::string BeforeContext;
@@ -297,37 +308,43 @@ bool dumpInsts(const MachineFunction &MF, StringRef Context, bool IsBefore) {
     BeforeCjumpSrcs.clear();
     BeforeCjumpLines.clear();
     BeforeCjumpCols.clear();
+    BeforeCjumpChars.clear();
     BeforeMDivInsts.clear();
     BeforeMDivSrcs.clear();
     BeforeMDivLines.clear();
     BeforeMDivCols.clear();
+    BeforeMDivChars.clear();
     BeforeMMemInsts.clear();
     BeforeMMemSrcs.clear();
     BeforeMMemLines.clear();
     BeforeMMemCols.clear();
+    BeforeMMemChars.clear();
 
     // Collect all conditional jumps, divisions, and memory operations
     for (const MachineBasicBlock &MBB : MF) {
       for (const MachineInstr &MI : MBB) {
         if (MI.getDesc().isBranch() && MI.getDesc().isConditionalBranch()) {
-          BeforeCjumpInsts.push_back(&MI);
+          BeforeCjumpInsts.push_back(getInstStr(MI));
           BeforeCjumpSrcs.push_back(getLineSrc(MI.getDebugLoc()));
           BeforeCjumpLines.push_back(getLineNumber(MI.getDebugLoc()));
           BeforeCjumpCols.push_back(getLineCol(MI.getDebugLoc()));
+          BeforeCjumpChars.push_back(getCharSrc(MI.getDebugLoc()));
         }
         // Check for division instructions
         if (isDivisionMachineInstruction(MI)) {
-          BeforeMDivInsts.push_back(&MI);
+          BeforeMDivInsts.push_back(getInstStr(MI));
           BeforeMDivSrcs.push_back(getLineSrc(MI.getDebugLoc()));
           BeforeMDivLines.push_back(getLineNumber(MI.getDebugLoc()));
           BeforeMDivCols.push_back(getLineCol(MI.getDebugLoc()));
+          BeforeMDivChars.push_back(getCharSrc(MI.getDebugLoc()));
         }
         // Check for memory operations
         if (MI.mayLoadOrStore() && !MI.isReturn() && !MI.isCall() && !MI.hasImplicitDef()) {
-          BeforeMMemInsts.push_back(&MI);
+          BeforeMMemInsts.push_back(getInstStr(MI));
           BeforeMMemSrcs.push_back(getLineSrc(MI.getDebugLoc()));
           BeforeMMemLines.push_back(getLineNumber(MI.getDebugLoc()));
           BeforeMMemCols.push_back(getLineCol(MI.getDebugLoc()));
+          BeforeMMemChars.push_back(getCharSrc(MI.getDebugLoc()));
         }
       }
     }
@@ -335,76 +352,82 @@ bool dumpInsts(const MachineFunction &MF, StringRef Context, bool IsBefore) {
   }
 
   // After pass execution - collect current state
-  SmallVector<const MachineInstr*, 16> AfterCjumpInsts;
+  SmallVector<std::string, 16> AfterCjumpInsts;
   SmallVector<std::string, 16> AfterCjumpSrcs;
   SmallVector<unsigned, 16> AfterCjumpLines;
   SmallVector<unsigned, 16> AfterCjumpCols;
-  SmallVector<const MachineInstr*, 16> AfterMDivInsts;
+  SmallVector<std::string, 16> AfterCjumpChars;
+  SmallVector<std::string, 16> AfterMDivInsts;
   SmallVector<std::string, 16> AfterMDivSrcs;
   SmallVector<unsigned, 16> AfterMDivLines;
   SmallVector<unsigned, 16> AfterMDivCols;
-  SmallVector<const MachineInstr*, 16> AfterMMemInsts;
+  SmallVector<std::string, 16> AfterMDivChars;
+  SmallVector<std::string, 16> AfterMMemInsts;
   SmallVector<std::string, 16> AfterMMemSrcs;
   SmallVector<unsigned, 16> AfterMMemLines;
   SmallVector<unsigned, 16> AfterMMemCols;
+  SmallVector<std::string, 16> AfterMMemChars;
 
   for (const MachineBasicBlock &MBB : MF) {
     for (const MachineInstr &MI : MBB) {
       if (MI.getDesc().isBranch() && MI.getDesc().isConditionalBranch()) {
-        AfterCjumpInsts.push_back(&MI);
+        AfterCjumpInsts.push_back(getInstStr(MI));
         AfterCjumpSrcs.push_back(getLineSrc(MI.getDebugLoc()));
         AfterCjumpLines.push_back(getLineNumber(MI.getDebugLoc()));
         AfterCjumpCols.push_back(getLineCol(MI.getDebugLoc()));
+        AfterCjumpChars.push_back(getCharSrc(MI.getDebugLoc()));
       }
       if (isDivisionMachineInstruction(MI)) {
-        AfterMDivInsts.push_back(&MI);
+        AfterMDivInsts.push_back(getInstStr(MI));
         AfterMDivSrcs.push_back(getLineSrc(MI.getDebugLoc()));
         AfterMDivLines.push_back(getLineNumber(MI.getDebugLoc()));
         AfterMDivCols.push_back(getLineCol(MI.getDebugLoc()));
+        AfterMDivChars.push_back(getCharSrc(MI.getDebugLoc()));
       }
       if (MI.mayLoadOrStore()) {
-        AfterMMemInsts.push_back(&MI);
+        AfterMMemInsts.push_back(getInstStr(MI));
         AfterMMemSrcs.push_back(getLineSrc(MI.getDebugLoc()));
         AfterMMemLines.push_back(getLineNumber(MI.getDebugLoc()));
         AfterMMemCols.push_back(getLineCol(MI.getDebugLoc()));
+        AfterMMemChars.push_back(getCharSrc(MI.getDebugLoc()));
       }
     }
   }
 
   // Find added and removed instructions using helper function
-  SmallVector<const MachineInstr*, 16> AddedCjumpInsts, RemovedCjumpInsts;
+  SmallVector<std::string, 16> AddedCjumpInsts, RemovedCjumpInsts;
   SmallVector<unsigned, 16> AddedCjumpLines, RemovedCjumpLines;
   SmallVector<unsigned, 16> AddedCjumpCols, RemovedCjumpCols;
   SmallVector<std::string, 16> AddedCjumpSrcs, RemovedCjumpSrcs;
   SmallVector<std::string, 16> AddedCjumpChars, RemovedCjumpChars;
 
-  SmallVector<const MachineInstr*, 16> AddedMDivInsts, RemovedMDivInsts;
+  SmallVector<std::string, 16> AddedMDivInsts, RemovedMDivInsts;
   SmallVector<unsigned, 16> AddedMDivLines, RemovedMDivLines;
   SmallVector<unsigned, 16> AddedMDivCols, RemovedMDivCols;
   SmallVector<std::string, 16> AddedMDivSrcs, RemovedMDivSrcs;
   SmallVector<std::string, 16> AddedMDivChars, RemovedMDivChars;
 
-  SmallVector<const MachineInstr*, 16> AddedMMemInsts, RemovedMMemInsts;
+  SmallVector<std::string, 16> AddedMMemInsts, RemovedMMemInsts;
   SmallVector<unsigned, 16> AddedMMemLines, RemovedMMemLines;
   SmallVector<unsigned, 16> AddedMMemCols, RemovedMMemCols;
   SmallVector<std::string, 16> AddedMMemSrcs, RemovedMMemSrcs;
   SmallVector<std::string, 16> AddedMMemChars, RemovedMMemChars;
 
   // Find added/removed conditional jumps
-  findInstructionDifferences(BeforeCjumpInsts, BeforeCjumpLines, BeforeCjumpCols, BeforeCjumpSrcs,
-                            AfterCjumpInsts, AfterCjumpLines, AfterCjumpCols, AfterCjumpSrcs,
+  findInstructionDifferences(BeforeCjumpInsts, BeforeCjumpLines, BeforeCjumpCols, BeforeCjumpSrcs, BeforeCjumpChars,
+                            AfterCjumpInsts, AfterCjumpLines, AfterCjumpCols, AfterCjumpSrcs, AfterCjumpChars,
                             AddedCjumpLines, AddedCjumpInsts, AddedCjumpSrcs, AddedCjumpCols, AddedCjumpChars,
                             RemovedCjumpLines, RemovedCjumpInsts, RemovedCjumpSrcs, RemovedCjumpCols, RemovedCjumpChars);
 
   // Find added/removed divisions
-  findInstructionDifferences(BeforeMDivInsts, BeforeMDivLines, BeforeMDivCols, BeforeMDivSrcs,
-                            AfterMDivInsts, AfterMDivLines, AfterMDivCols, AfterMDivSrcs,
+  findInstructionDifferences(BeforeMDivInsts, BeforeMDivLines, BeforeMDivCols, BeforeMDivSrcs, BeforeMDivChars,
+                            AfterMDivInsts, AfterMDivLines, AfterMDivCols, AfterMDivSrcs, AfterMDivChars,
                             AddedMDivLines, AddedMDivInsts, AddedMDivSrcs, AddedMDivCols, AddedMDivChars,
                             RemovedMDivLines, RemovedMDivInsts, RemovedMDivSrcs, RemovedMDivCols, RemovedMDivChars);
 
   // Find added/removed memory operations
-  findInstructionDifferences(BeforeMMemInsts, BeforeMMemLines, BeforeMMemCols, BeforeMMemSrcs,
-                            AfterMMemInsts, AfterMMemLines, AfterMMemCols, AfterMMemSrcs,
+  findInstructionDifferences(BeforeMMemInsts, BeforeMMemLines, BeforeMMemCols, BeforeMMemSrcs, BeforeMMemChars,
+                            AfterMMemInsts, AfterMMemLines, AfterMMemCols, AfterMMemSrcs, AfterMMemChars,
                             AddedMMemLines, AddedMMemInsts, AddedMMemSrcs, AddedMMemCols, AddedMMemChars,
                             RemovedMMemLines, RemovedMMemInsts, RemovedMMemSrcs, RemovedMMemCols, RemovedMMemChars);
 
