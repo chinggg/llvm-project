@@ -450,19 +450,19 @@ bool dumpInsts(const MachineFunction &MF, StringRef Context, bool IsBefore) {
       << "\"added_cjump_count\": " << AddedCjumpLines.size();
     // Removed conditional jumps
     if (!RemovedCjumpLines.empty()) {
-      JsonStream << ",\"removed_cjump_lines\": [" << join(RemovedCjumpLines, ",") << "]"
-      << ",\"removed_cjump_cols\": [" << join(RemovedCjumpCols, ",") << "]"
-      << ",\"removed_cjump_insts\": [" << join(RemovedCjumpInsts, ",") << "]"
-      << ",\"removed_cjump_srcs\": [" << join(RemovedCjumpSrcs, ",") << "]"
-      << ",\"removed_cjump_chars\": [" << join(RemovedCjumpChars, ",") << "]";
+      JsonStream << ",\"removed_cjump_lines\": [" << join(RemovedCjumpLines) << "]"
+      << ",\"removed_cjump_cols\": [" << join(RemovedCjumpCols) << "]"
+      << ",\"removed_cjump_insts\": [" << join(RemovedCjumpInsts) << "]"
+      << ",\"removed_cjump_srcs\": [" << join(RemovedCjumpSrcs) << "]"
+      << ",\"removed_cjump_chars\": [" << join(RemovedCjumpChars) << "]";
     }
     // Added conditional jumps  
     if (!AddedCjumpLines.empty()) {
-      JsonStream << ",\"added_cjump_lines\": [" << join(AddedCjumpLines, ",") << "]"
-      << ",\"added_cjump_cols\": [" << join(AddedCjumpCols, ",") << "]"
-      << ",\"added_cjump_insts\": [" << join(AddedCjumpInsts, ",") << "]"
-      << ",\"added_cjump_srcs\": [" << join(AddedCjumpSrcs, ",") << "]"
-      << ",\"added_cjump_chars\": [" << join(AddedCjumpChars, ",") << "]";
+      JsonStream << ",\"added_cjump_lines\": [" << join(AddedCjumpLines) << "]"
+      << ",\"added_cjump_cols\": [" << join(AddedCjumpCols) << "]"
+      << ",\"added_cjump_insts\": [" << join(AddedCjumpInsts) << "]"
+      << ",\"added_cjump_srcs\": [" << join(AddedCjumpSrcs) << "]"
+      << ",\"added_cjump_chars\": [" << join(AddedCjumpChars) << "]";
     }
     // Division instruction stats
     JsonStream << ",\"mdiv_count_before\": " << BeforeMDivInsts.size() << ","
@@ -471,19 +471,19 @@ bool dumpInsts(const MachineFunction &MF, StringRef Context, bool IsBefore) {
       << "\"added_mdiv_count\": " << AddedMDivLines.size();
     // Removed division instructions
     if (!RemovedMDivLines.empty()) {
-      JsonStream << ",\"removed_mdiv_lines\": [" << join(RemovedMDivLines, ",") << "]"
-      << ",\"removed_mdiv_cols\": [" << join(RemovedMDivCols, ",") << "]"
-      << ",\"removed_mdiv_insts\": [" << join(RemovedMDivInsts, ",") << "]"
-      << ",\"removed_mdiv_srcs\": [" << join(RemovedMDivSrcs, ",") << "]"
-      << ",\"removed_mdiv_chars\": [" << join(RemovedMDivChars, ",") << "]";
+      JsonStream << ",\"removed_mdiv_lines\": [" << join(RemovedMDivLines) << "]"
+      << ",\"removed_mdiv_cols\": [" << join(RemovedMDivCols) << "]"
+      << ",\"removed_mdiv_insts\": [" << join(RemovedMDivInsts) << "]"
+      << ",\"removed_mdiv_srcs\": [" << join(RemovedMDivSrcs) << "]"
+      << ",\"removed_mdiv_chars\": [" << join(RemovedMDivChars) << "]";
     }
     // Added division instructions 
     if (!AddedMDivLines.empty()) {
-      JsonStream << ",\"added_mdiv_lines\": [" << join(AddedMDivLines, ",") << "]"
-      << ",\"added_mdiv_cols\": [" << join(AddedMDivCols, ",") << "]"
-      << ",\"added_mdiv_insts\": [" << join(AddedMDivInsts, ",") << "]"
-      << ",\"added_mdiv_srcs\": [" << join(AddedMDivSrcs, ",") << "]"
-      << ",\"added_mdiv_chars\": [" << join(AddedMDivChars, ",") << "]";
+      JsonStream << ",\"added_mdiv_lines\": [" << join(AddedMDivLines) << "]"
+      << ",\"added_mdiv_cols\": [" << join(AddedMDivCols) << "]"
+      << ",\"added_mdiv_insts\": [" << join(AddedMDivInsts) << "]"
+      << ",\"added_mdiv_srcs\": [" << join(AddedMDivSrcs) << "]"
+      << ",\"added_mdiv_chars\": [" << join(AddedMDivChars) << "]";
     }
     // Memory operation stats
     JsonStream << ",\"mmem_count_before\": " << BeforeMMemInsts.size() << ","
@@ -492,19 +492,19 @@ bool dumpInsts(const MachineFunction &MF, StringRef Context, bool IsBefore) {
       << "\"added_mmem_count\": " << AddedMMemLines.size();
     // Removed memory operations
     if (!RemovedMMemLines.empty()) {
-      JsonStream << ",\"removed_mmem_lines\": [" << join(RemovedMMemLines, ",") << "]"
-      << ",\"removed_mmem_cols\": [" << join(RemovedMMemCols, ",") << "]"
-      << ",\"removed_mmem_insts\": [" << join(RemovedMMemInsts, ",") << "]"
-      << ",\"removed_mmem_srcs\": [" << join(RemovedMMemSrcs, ",") << "]"
-      << ",\"removed_mmem_chars\": [" << join(RemovedMMemChars, ",") << "]";
+      JsonStream << ",\"removed_mmem_lines\": [" << join(RemovedMMemLines) << "]"
+      << ",\"removed_mmem_cols\": [" << join(RemovedMMemCols) << "]"
+      << ",\"removed_mmem_insts\": [" << join(RemovedMMemInsts) << "]"
+      << ",\"removed_mmem_srcs\": [" << join(RemovedMMemSrcs) << "]"
+      << ",\"removed_mmem_chars\": [" << join(RemovedMMemChars) << "]";
     }
     // Added memory operations
     if (!AddedMMemLines.empty()) {
-      JsonStream << ",\"added_mmem_lines\": [" << join(AddedMMemLines, ",") << "]"
-      << ",\"added_mmem_cols\": [" << join(AddedMMemCols, ",") << "]"
-      << ",\"added_mmem_insts\": [" << join(AddedMMemInsts, ",") << "]"
-      << ",\"added_mmem_srcs\": [" << join(AddedMMemSrcs, ",") << "]"
-      << ",\"added_mmem_chars\": [" << join(AddedMMemChars, ",") << "]";
+      JsonStream << ",\"added_mmem_lines\": [" << join(AddedMMemLines) << "]"
+      << ",\"added_mmem_cols\": [" << join(AddedMMemCols) << "]"
+      << ",\"added_mmem_insts\": [" << join(AddedMMemInsts) << "]"
+      << ",\"added_mmem_srcs\": [" << join(AddedMMemSrcs) << "]"
+      << ",\"added_mmem_chars\": [" << join(AddedMMemChars) << "]";
     }
     JsonStream << "}\n";
     
