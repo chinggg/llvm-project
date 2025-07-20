@@ -383,7 +383,7 @@ bool dumpInsts(const MachineFunction &MF, StringRef Context, bool IsBefore) {
         AfterMDivCols.push_back(getLineCol(MI.getDebugLoc()));
         AfterMDivChars.push_back(getCharSrc(MI.getDebugLoc()));
       }
-      if (MI.mayLoadOrStore()) {
+      if (MI.mayLoadOrStore() && !MI.isReturn() && !MI.isCall() && !MI.hasImplicitDef()) {
         AfterMMemInsts.push_back(getInstStr(MI));
         AfterMMemSrcs.push_back(getLineSrc(MI.getDebugLoc()));
         AfterMMemLines.push_back(getLineNumber(MI.getDebugLoc()));
