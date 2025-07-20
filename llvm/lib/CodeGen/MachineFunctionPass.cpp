@@ -229,7 +229,7 @@ void findInstructionDifferences(const SmallVectorImpl<T>& beforeInsts,
     }
     if (!found) {
       addedLines.push_back(afterLines[i]);
-      addedInsts.push_back(afterInsts[i]);
+      // addedInsts.push_back(afterInsts[i]);
       addedSrcs.push_back(afterSrcs[i]);
       addedCols.push_back(afterCols[i]);
       addedChars.push_back(afterChars[i]);
@@ -247,7 +247,7 @@ void findInstructionDifferences(const SmallVectorImpl<T>& beforeInsts,
     }
     if (!found) {
       removedLines.push_back(beforeLines[i]);
-      removedInsts.push_back(beforeInsts[i]);
+      // removedInsts.push_back(beforeInsts[i]);
       removedSrcs.push_back(beforeSrcs[i]);
       removedCols.push_back(beforeCols[i]);
       removedChars.push_back(beforeChars[i]);
@@ -324,7 +324,7 @@ bool dumpInsts(const MachineFunction &MF, StringRef Context, bool IsBefore) {
     for (const MachineBasicBlock &MBB : MF) {
       for (const MachineInstr &MI : MBB) {
         if (MI.getDesc().isBranch() && MI.getDesc().isConditionalBranch()) {
-          BeforeCjumpInsts.push_back(getInstStr(MI));
+          // BeforeCjumpInsts.push_back(getInstStr(MI));
           BeforeCjumpSrcs.push_back(getLineSrc(MI.getDebugLoc()));
           BeforeCjumpLines.push_back(getLineNumber(MI.getDebugLoc()));
           BeforeCjumpCols.push_back(getLineCol(MI.getDebugLoc()));
@@ -332,7 +332,7 @@ bool dumpInsts(const MachineFunction &MF, StringRef Context, bool IsBefore) {
         }
         // Check for division instructions
         if (isDivisionMachineInstruction(MI)) {
-          BeforeMDivInsts.push_back(getInstStr(MI));
+          // BeforeMDivInsts.push_back(getInstStr(MI));
           BeforeMDivSrcs.push_back(getLineSrc(MI.getDebugLoc()));
           BeforeMDivLines.push_back(getLineNumber(MI.getDebugLoc()));
           BeforeMDivCols.push_back(getLineCol(MI.getDebugLoc()));
@@ -340,7 +340,7 @@ bool dumpInsts(const MachineFunction &MF, StringRef Context, bool IsBefore) {
         }
         // Check for memory operations
         if (MI.mayLoadOrStore() && !MI.isReturn() && !MI.isCall() && !MI.hasImplicitDef()) {
-          BeforeMMemInsts.push_back(getInstStr(MI));
+          // BeforeMMemInsts.push_back(getInstStr(MI));
           BeforeMMemSrcs.push_back(getLineSrc(MI.getDebugLoc()));
           BeforeMMemLines.push_back(getLineNumber(MI.getDebugLoc()));
           BeforeMMemCols.push_back(getLineCol(MI.getDebugLoc()));
@@ -371,21 +371,21 @@ bool dumpInsts(const MachineFunction &MF, StringRef Context, bool IsBefore) {
   for (const MachineBasicBlock &MBB : MF) {
     for (const MachineInstr &MI : MBB) {
       if (MI.getDesc().isBranch() && MI.getDesc().isConditionalBranch()) {
-        AfterCjumpInsts.push_back(getInstStr(MI));
+        // AfterCjumpInsts.push_back(getInstStr(MI));
         AfterCjumpSrcs.push_back(getLineSrc(MI.getDebugLoc()));
         AfterCjumpLines.push_back(getLineNumber(MI.getDebugLoc()));
         AfterCjumpCols.push_back(getLineCol(MI.getDebugLoc()));
         AfterCjumpChars.push_back(getCharSrc(MI.getDebugLoc()));
       }
       if (isDivisionMachineInstruction(MI)) {
-        AfterMDivInsts.push_back(getInstStr(MI));
+        // AfterMDivInsts.push_back(getInstStr(MI));
         AfterMDivSrcs.push_back(getLineSrc(MI.getDebugLoc()));
         AfterMDivLines.push_back(getLineNumber(MI.getDebugLoc()));
         AfterMDivCols.push_back(getLineCol(MI.getDebugLoc()));
         AfterMDivChars.push_back(getCharSrc(MI.getDebugLoc()));
       }
       if (MI.mayLoadOrStore() && !MI.isReturn() && !MI.isCall() && !MI.hasImplicitDef()) {
-        AfterMMemInsts.push_back(getInstStr(MI));
+        // AfterMMemInsts.push_back(getInstStr(MI));
         AfterMMemSrcs.push_back(getLineSrc(MI.getDebugLoc()));
         AfterMMemLines.push_back(getLineNumber(MI.getDebugLoc()));
         AfterMMemCols.push_back(getLineCol(MI.getDebugLoc()));
