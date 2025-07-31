@@ -2,6 +2,9 @@
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/CodeGen/SlotIndexes.h"
+#include "llvm/CodeGen/TargetInstrInfo.h"
+#include "llvm/CodeGen/TargetOpcodes.h"
+#include "llvm/CodeGen/TargetRegisterInfo.h"
 #include "llvm/InitializePasses.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Instructions.h"
@@ -27,6 +30,135 @@ static cl::opt<std::string>
             cl::init(""), cl::Hidden);
 
 namespace {
+
+/// Check if a memory instruction uses the specified register as an addressing register
+/// Returns true if the register is found in the addressing mode
+static bool MemInstUseRegAsAddr(const MachineInstr &MI, Register Reg) {
+  // Get target instruction and register info from the MachineInstr
+  const MachineFunction *MF = MI.getMF();
+  const TargetInstrInfo *TII = MF->getSubtarget().getInstrInfo();
+  const TargetRegisterInfo *TRI = MF->getSubtarget().getRegisterInfo();
+
+  // First try to get AddrMode, currently implemented only on X86/AArch64
+  std::optional<ExtAddrMode> AM = TII->getAddrModeFromMemoryOp(MI, TRI);
+  if (AM) {
+    const Register BaseReg = AM->BaseReg, ScaledReg = AM->ScaledReg;
+    return (BaseReg == Reg || ScaledReg == Reg);
+  } else {  // Fallback to check each operand register
+    for (const MachineOperand &MO : MI.explicit_uses()) {
+      if (MO.isReg() && MO.isUse() && MO.getReg() == Reg) {
+        // NOTE: over-approximate here as we don't know if reg used as address
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// A helper function to check if a machine instruction is a conditional move.
+static inline bool isConditionalMove(const MachineInstr &MI) {
+  // NOTE: target-specific header is not included here, have to use generic MIR opcode
+  
+  // Check if the instruction is a copy/move but not an unconditional one
+  if (MI.isCopy())
+    return false; // COPY is an unconditional move
+    
+  // If it's a branch or jump, it's not a conditional move
+  if (MI.getDesc().isBranch() || MI.getDesc().isIndirectBranch())
+    return false;
+    
+  bool NameHintsCmov = false;
+  // Check if the name contains typical conditional move substrings
+  // Support multiple architectures: X86, AArch64, ARM, MIPS
+  if (isTargetSpecificOpcode(MI.getOpcode())) {
+    const TargetInstrInfo *TII = MI.getMF()->getSubtarget().getInstrInfo();
+    const Triple &TT = MI.getMF()->getSubtarget().getTargetTriple();
+    StringRef OpcodeName = TII->getName(MI.getOpcode());
+
+    // X86: cmov instructions
+    if (TT.isX86() && OpcodeName.starts_with_insensitive("cmov")) {
+      NameHintsCmov = true;
+    }
+    // AArch64: csel (conditional select), csinc, csinv, csneg
+    else if (TT.isAArch64() && (OpcodeName.starts_with_insensitive("csel") ||
+             OpcodeName.starts_with_insensitive("csinc") ||
+             OpcodeName.starts_with_insensitive("csinv") ||
+             OpcodeName.starts_with_insensitive("csneg"))) {
+      NameHintsCmov = true;
+    }
+    // MIPS: movn, movz, movf, movt variants (MOVN_*, MOVZ_*, etc.)
+    else if (TT.isMIPS() && (OpcodeName.starts_with_insensitive("movn") ||
+             OpcodeName.starts_with_insensitive("movz") || 
+             OpcodeName.starts_with_insensitive("movf") ||
+             OpcodeName.starts_with_insensitive("movt"))) {
+      NameHintsCmov = true;
+    }
+    // ARM: MOVCC variants (MOVCCr, MOVCCi, MOVCCsi, MOVCCsr)
+    else if (TT.isARM() && OpcodeName.starts_with_insensitive("mov")) {
+      // sometimes opcode already contains "MOVCC"
+      if (OpcodeName.starts_with_insensitive("movcc")) NameHintsCmov = true;
+      else if (OpcodeName.starts_with_insensitive("movr") || OpcodeName.starts_with_insensitive("movs")) {
+        // sometimes opcode is normal "MOVR", check "killed $cpsr" in MI string representation
+        std::string str;
+        raw_string_ostream ss(str);
+        ss << MI;
+        if (str.find("killed $cpsr") != std::string::npos) NameHintsCmov = true;
+      }
+    }
+    // Additional patterns: any instruction with "select" in the name (generic)
+    else if (OpcodeName.contains_insensitive("select")) {
+      NameHintsCmov = true;
+    }
+  }
+  
+  // Return true if it looks like a conditional move
+  return NameHintsCmov;
+}
+
+/// Identifies conditional moves that are used by memory operations
+/// Returns the memory instruction that uses the register defined by the cmov as reg, or nullptr if none found
+/* example pattern
+  CMOV REG1, REG2 
+  MOV xx, [REG1] */
+static const MachineInstr* findMemInstUsingCmov(const MachineInstr &CmovMI, const MachineBasicBlock &MBB) {
+  // Find the register defined by this cmov
+  Register DefReg;
+  for (const MachineOperand &MO : CmovMI.defs()) {
+    if (MO.isReg() && MO.isDef() && MO.getReg()) {
+      DefReg = MO.getReg();
+      break;
+    }
+  }
+  
+  if (!DefReg)
+    return nullptr;
+  
+  // Flag to indicate we've found the cmov instruction
+  bool foundCmov = false;
+  // Check if any memory operation AFTER this cmov uses this register
+  for (const MachineInstr &MI : MBB) {
+    // Skip instructions until we find the cmov
+    if (&MI == &CmovMI) {
+      foundCmov = true;
+      continue; // Skip the cmov itself
+    }
+    // Only check instructions that come after the cmov
+    if (!foundCmov)
+      continue;
+
+    if (!MI.getDebugLoc() || !MI.mayLoadOrStore())
+      continue;
+    // filter FP as mayLoadOrStore can still keep non-memory instructions like bne branch in MIPS
+    if (MI.isReturn() || MI.isCall() || MI.isBranch() || MI.isPseudo() || MI.getFlag(llvm::MachineInstr::FrameDestroy))
+      continue;
+    // Check if this memory instruction uses the cmov-defined register as address
+    if (MemInstUseRegAsAddr(MI, DefReg)) {
+      return &MI; // Found a memory op using this register
+    }
+  }
+  
+  return nullptr;
+}
 
 /// MachineFunctionCountInstr - This is a architecture-independent
 /// pass to dump cjump instructions of a MachineFunction.
@@ -73,12 +205,14 @@ bool MFCountInstructions::runOnMachineFunction(MachineFunction &MF) {
   SmallVector<const MachineInstr*, 16> MDivInsts;  // MIR division instructions
   // SmallVector<const Instruction*, 16> MemInsts;  // IR memory operations
   SmallVector<const MachineInstr*, 16> MMemInsts;  // MIR memory operations
+  SmallVector<const MachineInstr*, 16> CmovInsts;  // MIR conditional moves
   // SmallVector<std::string, 16> CondSrcs;
   SmallVector<std::string, 16> CjumpSrcs;
   // SmallVector<std::string, 16> DivSrcs;
   SmallVector<std::string, 16> MDivSrcs;
   // SmallVector<std::string, 16> MemSrcs;
   SmallVector<std::string, 16> MMemSrcs;
+  SmallVector<std::string, 16> CmovSrcs;
   // SmallVector<unsigned, 16> CondLines;
   SmallVector<unsigned, 16> CjumpLines;
   SmallVector<unsigned, 16> CjumpCols;
@@ -88,12 +222,15 @@ bool MFCountInstructions::runOnMachineFunction(MachineFunction &MF) {
   // SmallVector<unsigned, 16> MemLines;
   SmallVector<unsigned, 16> MMemLines;
   SmallVector<unsigned, 16> MMemCols;
+  SmallVector<unsigned, 16> CmovLines;
+  SmallVector<unsigned, 16> CmovCols;
   // SmallVector<std::string, 16> CondChars;
   SmallVector<std::string, 16> CjumpChars;
   // SmallVector<std::string, 16> DivChars;
   SmallVector<std::string, 16> MDivChars;
   // SmallVector<std::string, 16> MemChars;
   SmallVector<std::string, 16> MMemChars;
+  SmallVector<std::string, 16> CmovChars;
 
   // Add vectors for memory operations
 
@@ -159,14 +296,30 @@ bool MFCountInstructions::runOnMachineFunction(MachineFunction &MF) {
         MDivCols.push_back(getLineCol(DL));
         MDivChars.push_back(getCharSrc(DL));
       }
-      // Detect memory operations in Machine IR
-      if (MI.mayLoadOrStore()) {
-        MMemInsts.push_back(&MI);
+      
+      // Now we first find cmove instructions and only collect memory operations that use cmov-defined registers
+      if (isConditionalMove(MI)) {
+        const MachineInstr *MemMI = findMemInstUsingCmov(MI, *MI.getParent());
+        if (!MemMI)
+          continue; // Skip cmovs not used by memory operations
+        
+        // Store the cmov instruction
+        CmovInsts.push_back(&MI);
         const auto DL = MI.getDebugLoc();
-        MMemLines.push_back(getLineNumber(DL));
-        MMemSrcs.push_back(getLineSrc(DL));
-        MMemCols.push_back(getLineCol(DL));
-        MMemChars.push_back(getCharSrc(DL));
+        CmovLines.push_back(getLineNumber(DL));
+        CmovSrcs.push_back(getLineSrc(DL));
+        CmovCols.push_back(getLineCol(DL));
+        CmovChars.push_back(getCharSrc(DL));
+        
+        // Store the memory instruction that uses the cmov-defined register
+        // NOTE: there are some FP where mmem inst use cmov-defined register much later
+        // we can actually check if cmov/mmem insts are in same source line
+        MMemInsts.push_back(MemMI);
+        const auto MemDL = MemMI->getDebugLoc();
+        MMemLines.push_back(getLineNumber(MemDL));
+        MMemSrcs.push_back(getLineSrc(MemDL));
+        MMemCols.push_back(getLineCol(MemDL));
+        MMemChars.push_back(getCharSrc(MemDL));
       }
     }
   }
@@ -201,6 +354,12 @@ bool MFCountInstructions::runOnMachineFunction(MachineFunction &MF) {
           //  << "\"mem_insts\": [" << join(MemInsts) << "], "
           //  << "\"mem_srcs\": [" << join(MemSrcs) << "], "
           //  << "\"mem_chars\": [" << join(MemChars) << "], "
+           << "\"cmov_count\": " << CmovInsts.size() << ", "
+           << "\"cmov_lines\": [" << join(CmovLines) << "], "
+           << "\"cmov_cols\": [" << join(CmovCols) << "], "
+           << "\"cmov_insts\": [" << join(CmovInsts) << "], "
+           << "\"cmov_srcs\": [" << join(CmovSrcs) << "], "
+           << "\"cmov_chars\": [" << join(CmovChars) << "], "
            << "\"mmem_count\": " << MMemInsts.size() << ", "
            << "\"mmem_lines\": [" << join(MMemLines) << "], "
            << "\"mmem_cols\": [" << join(MMemCols) << "], "
