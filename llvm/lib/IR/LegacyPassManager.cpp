@@ -22,6 +22,7 @@
 #include "llvm/Support/Chrono.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/DynamicLibrary.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/TimeProfiler.h"
@@ -32,6 +33,36 @@
 using namespace llvm;
 
 extern cl::opt<bool> UseNewDbgInfoFormat;
+
+// Declare external functions that should be provided by legacy pass instrumentation plugins
+extern "C" void LegacyBeforeFunctionPass(const Function* F, StringRef PassName);
+extern "C" void LegacyAfterFunctionPass(const Function* F, StringRef PassName);
+extern "C" void LegacyBeforeModulePass(const Module* M, StringRef PassName);
+extern "C" void LegacyAfterModulePass(const Module* M, StringRef PassName);
+
+// Global function pointers - will be set when plugin is loaded
+static void (*runLegacyBeforeFunctionPass)(const Function*, StringRef) = nullptr;
+static void (*runLegacyAfterFunctionPass)(const Function*, StringRef) = nullptr;
+static void (*runLegacyBeforeModulePass)(const Module*, StringRef) = nullptr;
+static void (*runLegacyAfterModulePass)(const Module*, StringRef) = nullptr;
+
+// Function to initialize the function pointers from loaded plugins
+static void initializeLegacyPassInstrumentationCallbacks() {
+  static bool initialized = false;
+  if (initialized) return;
+  initialized = true;
+  
+  // Try to find the functions using LLVM's dynamic library search
+  runLegacyBeforeFunctionPass = reinterpret_cast<decltype(LegacyBeforeFunctionPass) *>(
+    sys::DynamicLibrary::SearchForAddressOfSymbol("LegacyBeforeFunctionPass"));
+  runLegacyAfterFunctionPass = reinterpret_cast<decltype(LegacyAfterFunctionPass) *>(
+    sys::DynamicLibrary::SearchForAddressOfSymbol("LegacyAfterFunctionPass"));
+  runLegacyBeforeModulePass = reinterpret_cast<decltype(LegacyBeforeModulePass) *>(
+    sys::DynamicLibrary::SearchForAddressOfSymbol("LegacyBeforeModulePass"));
+  runLegacyAfterModulePass = reinterpret_cast<decltype(LegacyAfterModulePass) *>(
+    sys::DynamicLibrary::SearchForAddressOfSymbol("LegacyAfterModulePass"));
+}
+
 // See PassManagers.h for Pass Manager infrastructure overview.
 
 //===----------------------------------------------------------------------===//
@@ -1440,7 +1471,21 @@ bool FPPassManager::runOnFunction(Function &F) {
 #ifdef EXPENSIVE_CHECKS
       uint64_t RefHash = FP->structuralHash(F);
 #endif
+      
+      // Legacy pass instrumentation: save state before function pass
+      initializeLegacyPassInstrumentationCallbacks();
+      if (runLegacyBeforeFunctionPass) {
+        errs() << "LegacyPM BeforeFunctionPass: "
+               << FP->getPassName() << "\n";
+        runLegacyBeforeFunctionPass(&F, FP->getPassName());
+      }
+      
       LocalChanged |= FP->runOnFunction(F);
+      
+      // Legacy pass instrumentation: compare and dump changes after function pass
+      if (runLegacyAfterFunctionPass) {
+        runLegacyAfterFunctionPass(&F, FP->getPassName());
+      }
 
 #if defined(EXPENSIVE_CHECKS) && !defined(NDEBUG)
       if (!LocalChanged && (RefHash != FP->structuralHash(F))) {
@@ -1555,7 +1600,18 @@ MPPassManager::runOnModule(Module &M) {
       uint64_t RefHash = MP->structuralHash(M);
 #endif
 
+      initializeLegacyPassInstrumentationCallbacks();
+      // Legacy pass instrumentation: save state before module pass
+      if (runLegacyBeforeModulePass) {
+        runLegacyBeforeModulePass(&M, MP->getPassName());
+      }
+
       LocalChanged |= MP->runOnModule(M);
+
+      // Legacy pass instrumentation: compare and dump changes after module pass
+      if (runLegacyAfterModulePass) {
+        runLegacyAfterModulePass(&M, MP->getPassName());
+      }
 
 #ifdef EXPENSIVE_CHECKS
       assert((LocalChanged || (RefHash == MP->structuralHash(M))) &&
