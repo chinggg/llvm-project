@@ -31,6 +31,15 @@ static cl::opt<std::string>
 
 namespace {
 
+// Helper for LLVM StringRef prefix check (API changed in LLVM 16)
+inline bool str_startswith_insensitive(llvm::StringRef S, llvm::StringRef Prefix) {
+#if LLVM_VERSION_MAJOR <= 15
+  return S.startswith_insensitive(Prefix);
+#else
+  return S.starts_with_insensitive(Prefix);
+#endif
+}
+
 /// Check if a memory instruction uses the specified register as an addressing register
 /// Returns true if the register is found in the addressing mode
 static bool MemInstUseRegAsAddr(const MachineInstr &MI, Register Reg) {
@@ -40,7 +49,7 @@ static bool MemInstUseRegAsAddr(const MachineInstr &MI, Register Reg) {
   const TargetRegisterInfo *TRI = MF->getSubtarget().getRegisterInfo();
 
   // First try to get AddrMode, currently implemented only on X86/AArch64
-  std::optional<ExtAddrMode> AM = TII->getAddrModeFromMemoryOp(MI, TRI);
+  auto AM = TII->getAddrModeFromMemoryOp(MI, TRI);
   if (AM) {
     const Register BaseReg = AM->BaseReg, ScaledReg = AM->ScaledReg;
     return (BaseReg == Reg || ScaledReg == Reg);
@@ -76,28 +85,28 @@ static inline bool isConditionalMove(const MachineInstr &MI) {
     StringRef OpcodeName = TII->getName(MI.getOpcode());
 
     // X86: cmov instructions
-    if (TT.isX86() && OpcodeName.starts_with_insensitive("cmov")) {
+    if (TT.isX86() && str_startswith_insensitive(OpcodeName, "cmov")) {
       NameHintsCmov = true;
     }
     // AArch64: csel (conditional select), csinc, csinv, csneg
-    else if (TT.isAArch64() && (OpcodeName.starts_with_insensitive("csel") ||
-             OpcodeName.starts_with_insensitive("csinc") ||
-             OpcodeName.starts_with_insensitive("csinv") ||
-             OpcodeName.starts_with_insensitive("csneg"))) {
+    else if (TT.isAArch64() && (str_startswith_insensitive(OpcodeName, "csel") ||
+             str_startswith_insensitive(OpcodeName, "csinc") ||
+             str_startswith_insensitive(OpcodeName, "csinv") ||
+             str_startswith_insensitive(OpcodeName, "csneg"))) {
       NameHintsCmov = true;
     }
     // MIPS: movn, movz, movf, movt variants (MOVN_*, MOVZ_*, etc.)
-    else if (TT.isMIPS() && (OpcodeName.starts_with_insensitive("movn") ||
-             OpcodeName.starts_with_insensitive("movz") || 
-             OpcodeName.starts_with_insensitive("movf") ||
-             OpcodeName.starts_with_insensitive("movt"))) {
+    else if (TT.isMIPS() && (str_startswith_insensitive(OpcodeName, "movn") ||
+             str_startswith_insensitive(OpcodeName, "movz") || 
+             str_startswith_insensitive(OpcodeName, "movf") ||
+             str_startswith_insensitive(OpcodeName, "movt"))) {
       NameHintsCmov = true;
     }
     // ARM: MOVCC variants (MOVCCr, MOVCCi, MOVCCsi, MOVCCsr)
-    else if (TT.isARM() && OpcodeName.starts_with_insensitive("mov")) {
+    else if (TT.isARM() && str_startswith_insensitive(OpcodeName, "mov")) {
       // sometimes opcode already contains "MOVCC"
-      if (OpcodeName.starts_with_insensitive("movcc")) NameHintsCmov = true;
-      else if (OpcodeName.starts_with_insensitive("movr") || OpcodeName.starts_with_insensitive("movs")) {
+      if (str_startswith_insensitive(OpcodeName, "movcc")) NameHintsCmov = true;
+      else if (str_startswith_insensitive(OpcodeName, "movr") || str_startswith_insensitive(OpcodeName, "movs")) {
         // sometimes opcode is normal "MOVR", check "killed $cpsr" in MI string representation
         std::string str;
         raw_string_ostream ss(str);
